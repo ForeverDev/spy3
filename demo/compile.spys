@@ -1,8 +1,24 @@
 jmp main
 
-thing:	db "print\0"
-format: db "Hello, world!\0"
+print: 
+	db "print\0"
+
+print_num:
+	iarg	0
+	ipush	.format
+	cfcall	print, 2
+	iret	
+.format: 
+	db "number: %d\n\0"
+
 
 main:
-		ipush	format
-		cfcall	thing, 10
+	ipush	17
+	call	print_num, 1
+	pop
+
+	ipush	42
+	call	print_num, 1
+	pop
+	
+	exit

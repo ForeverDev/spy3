@@ -47,8 +47,19 @@ const SpyInstruction spy_instructions[255] = {
 	{"call", 0x23, {OP_INT64, OP_INT64}},	/* [] -> [int ip_save, int bp_save, int nargs */
 	{"ccall", 0x24, {OP_INT64}},			/* [int addr] -> [int ip_save, int bp_save, int nargs */
 	{"cfcall", 0x25, {OP_INT64, OP_INT64}},	/* [] -> [int ip_save, int bp_save, int nargs] */
+	{"iret", 0x26, {OP_NONE}},				/* [int ip_save, int bp_save, int nargs, int ret_val] -> [int ret_val] */
+	{"exit", 0x27, {OP_NONE}},				/* [] -> [] */
+	{"ider", 0x28, {OP_NONE}},				/* [int addr] -> [int value] */
+	{"bder", 0x29, {OP_NONE}},				/* [int addr] -> [int value (casted uint8_t)] */
+	{"isave", 0x2A, {OP_NONE}},				/* [int addr, int value] -> [] */
+	{"bsave", 0x2B, {OP_NONE}},				/* [int addr, int value (casted uint8_t)] -> [] */
+	{"res", 0x2C, {OP_INT64}},				/* [] -> [int[bytes]] */
+	{"iinc", 0x2D, {OP_INT64}},				/* [int val = x] -> [int val = x + amount] */
+	{"pop", 0x2E, {OP_NONE}},				/* [64bit thing] -> [] */
+	{"iarg", 0x2F, {OP_INT64}},				/* [] -> [int value] */
+	{"carg", 0x30, {OP_INT64}},				/* [] -> int value (casted uint8_t)] */
 
-	{"__SENTINEL__", 0xFF, {OP_NONE}}		
+	{NULL, 0x00, {OP_NONE}}		
 
 };
 
@@ -108,7 +119,7 @@ spy_die(const char* msg, ...) {
 /* NOTE: exposed to assembler */
 const SpyInstruction*
 spy_get_instruction(const char* name) {
-	for (const SpyInstruction* i = spy_instructions; strcmp(i->name, "__SENTINEL__"); i++) {
+	for (const SpyInstruction* i = spy_instructions; i->name; i++) {
 		if (!strcmp(i->name, name)) {
 			return i;
 		}	
@@ -118,7 +129,7 @@ spy_get_instruction(const char* name) {
 
 static const SpyInstruction*
 spy_get_instruction_op(uint8_t opcode) {
-	for (const SpyInstruction* i = spy_instructions; strcmp(i->name, "__SENTINEL__"); i++) {
+	for (const SpyInstruction* i = spy_instructions; i->name; i++) {
 		if (i->opcode == opcode) {
 			return i;
 		}	
@@ -129,8 +140,8 @@ spy_get_instruction_op(uint8_t opcode) {
 void
 spy_dump() {
 	printf("STACK: \n");
-	for (uint8_t* i = spy->sp; i > &spy->memory[SIZE_CODE]; i -= 8) {
-		printf("\t[SP + %d]: %lld\n", i - spy->memory, *(spy_integer *)i);
+	for (uint8_t* i = spy->sp; i >= &spy->memory[SIZE_CODE] + 8; i -= 8) {
+		printf("\t[SP + 0x%04x]: %lld\n", i - &spy->memory[SIZE_CODE], *(spy_integer *)i);
 	}
 	printf("FLAGS: \n");
 	printf("\tEQ:   %d\n", (spy->flags & FLAG_EQ) != 0);
@@ -212,8 +223,8 @@ spy_execute(const char* filename) {
 
 	#define INTARITH(op) \
 		{ \
-			spy_integer a = spy_pop_int(spy); \
 			spy_integer b = spy_pop_int(spy); \
+			spy_integer a = spy_pop_int(spy); \
 			spy_push_int(spy, a op b); \
 		}
 
@@ -439,9 +450,9 @@ spy_execute(const char* filename) {
 				spy_integer addr = spy_code_int();
 				spy_integer nargs = spy_code_int();
 				/* save things on stack */
-				spy_push_int(spy, (intptr_t)spy->ip); /* save ip */
-				spy_push_int(spy, (intptr_t)spy->bp); /* save bp */
-				spy_push_int(spy, (spy_integer)nargs);   /* save nargs */
+				spy_push_int(spy, (intptr_t)spy->ip);	/* save ip */
+				spy_push_int(spy, (intptr_t)spy->bp);	/* save bp */
+				spy_push_int(spy, (spy_integer)nargs);  /* save nargs */
 				spy->bp = spy->sp;
 				spy->ip = &code[addr];
 				break;
@@ -452,9 +463,9 @@ spy_execute(const char* filename) {
 				spy_integer addr = spy_pop_int(spy);
 				spy_integer nargs = spy_code_int();
 				/* save things on stack */
-				spy_push_int(spy, (intptr_t)spy->ip); /* save ip */
-				spy_push_int(spy, (intptr_t)spy->bp); /* save bp */
-				spy_push_int(spy, (spy_integer)nargs);   /* save nargs */
+				spy_push_int(spy, (intptr_t)spy->ip);	/* save ip */
+				spy_push_int(spy, (intptr_t)spy->bp);	/* save bp */
+				spy_push_int(spy, (spy_integer)nargs);  /* save nargs */
 				spy->bp = spy->sp;
 				spy->ip = &code[addr];
 				break;	
@@ -478,7 +489,71 @@ spy_execute(const char* filename) {
 					spy_die("unknown c-function '%s'", cf_name);
 				}
 				cfunc->f(spy);
+				break;
 			}
+
+			/* IRET */
+			case 0x26: {
+				spy_integer retval, nargs;
+				retval = spy_pop_int(spy);
+				spy->sp = spy->bp;
+				nargs = spy_pop_int(spy);
+				spy->bp = (uint8_t *)spy_pop_int(spy);
+				spy->ip = (uint8_t *)spy_pop_int(spy);
+				spy->sp -= nargs * 8;
+				spy_push_int(spy, retval);
+				break;
+			}
+
+			/* EXIT */
+			case 0x27:
+				return;
+
+			/* IDER */
+			case 0x28:
+				spy_push_int(spy, spy_mem_int(spy, spy_pop_int(spy)));
+				break;
+
+			/* BDER */
+			case 0x29:
+				spy_push_byte(spy, spy_mem_byte(spy, spy_pop_int(spy)));
+				break;
+
+			/* ISAVE */
+			case 0x2A: {
+				spy_integer value = spy_pop_int(spy);
+				spy_integer addr = spy_pop_int(spy);
+				spy_save_int(spy, addr, value);	
+				break;
+			}
+				
+			/* CSAVE */
+			case 0x2B: {
+				spy_byte value = spy_pop_byte(spy);
+				spy_integer addr = spy_pop_int(spy);
+				spy_save_byte(spy, addr, value);
+				break;
+			}
+
+			/* RES */
+			case 0x2C:
+				spy->sp += spy_code_int(spy)*8;
+				break;
+
+			/* IINC */
+			case 0x2D:
+				spy_push_int(spy, spy_pop_int(spy) + spy_code_int());
+				break;
+
+			/* POP */
+			case 0x2E:
+				spy_pop_int(spy); /* type of pop is irrelevant */
+				break;
+
+			/* IARG */
+			case 0x2F:
+				spy_push_int(spy, *(spy_integer *)&spy->bp[-3*8 - spy_code_int()*8]);
+				break;
 					
 		}
 

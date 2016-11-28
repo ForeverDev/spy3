@@ -61,6 +61,7 @@ register_label(Assembler* A, const char* name, int64_t addr) {
 		asm_die(A, "a local label must come after a global label");
 	} else if (!A->labels->label) {
 		A->labels->label = new;
+		A->current_global = new;
 	} else if (is_global) {
 		LabelList* new_list = malloc(sizeof(LabelList));
 		new_list->label = new;
@@ -90,7 +91,7 @@ register_label(Assembler* A, const char* name, int64_t addr) {
 	}
 }
 
-static int64_t
+static Label*
 get_label(Assembler* A, const char* name) {
 	/* check locals if starts with '.' */
 	if (name[0] == '.') {
@@ -99,18 +100,20 @@ get_label(Assembler* A, const char* name) {
 		}
 		for (LabelList* i = A->current_global->children; i; i = i->next) {
 			if (!strcmp(i->label->name, name)) {
-				return i->label->addr;
+				return i->label;
 			}
 		}
+		goto die;
 	} else {
 		if (!A->labels->label) {
 			goto die;
 		}
 		for (LabelList* i = A->labels; i; i = i->next) {
 			if (!strcmp(i->label->name, name)) {
-				return i->label->addr;
+				return i->label;
 			}
 		}
+		goto die;
 	}
 	die: /* nasty label but it makes things easier */
 	asm_die(A, "unknown label '%s'", name);
@@ -128,6 +131,7 @@ void generate_bytecode(const char* infile, const char* outfile) {
 	A.labels = malloc(sizeof(LabelList));
 	A.labels->label = NULL;
 	A.labels->next = NULL;
+	A.current_global = NULL;
 	A.handle = fopen(outfile, "wb");
 	if (!A.handle) {
 		asm_die(&A, "couldn't open '%s' for writing", outfile);
@@ -149,6 +153,10 @@ void generate_bytecode(const char* infile, const char* outfile) {
 			/* if on an instruction, increment index by 1 + operand_size */
 			if ((ins = spy_get_instruction(on_word))) {
 				cindex++; /* one byte for instruction */
+				if (ins->operands[0] == OP_NONE) {
+					A.tokens = A.tokens->next;
+					continue;
+				}
 				if (A.tokens->next) {
 					A.tokens = A.tokens->next; /* move to first operand */
 				}
@@ -199,6 +207,9 @@ void generate_bytecode(const char* infile, const char* outfile) {
 				A.tokens = A.tokens->next; /* skip colon */	
 			}
 		}
+		if (!A.tokens) {
+			break;
+		}
 		A.tokens = A.tokens->next;
 	}
 
@@ -208,6 +219,9 @@ void generate_bytecode(const char* infile, const char* outfile) {
 		if (A.tokens->token->type == TOK_IDENTIFIER) {
 			/* if it's a label definition, skip */
 			if (peektype(&A) == TOK_OPERATOR && A.tokens->next->token->oval == ':') {
+				if (A.tokens->token->sval[0] != '.') {
+					A.current_global = get_label(&A, A.tokens->token->sval);
+				}
 				A.tokens = A.tokens->next;
 				continue;
 			}
@@ -234,7 +248,7 @@ void generate_bytecode(const char* infile, const char* outfile) {
 									break;
 								case TOK_IDENTIFIER: {
 									/* label needs a memory address */
-									int64_t label = get_label(&A, A.tokens->token->sval);
+									int64_t label = get_label(&A, A.tokens->token->sval)->addr;
 									fwrite(&label, 1, sizeof(int64_t), A.handle);
 									break;
 								}

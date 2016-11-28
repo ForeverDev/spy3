@@ -26,5 +26,5 @@ register_array(SpyState* spy, SpyCFunc cfuncs[]) {
 }
 
 void spy_init_capi(SpyState* spy) {
-	register_array(spy, capi_io_functions); 
+	register_array(spy, capi_io); 
 }

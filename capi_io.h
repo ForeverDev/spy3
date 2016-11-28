@@ -3,6 +3,6 @@
 
 #include "vm.h"
 
-extern SpyCFunc capi_io_functions[];
+extern SpyCFunc capi_io[];
 
 #endif
