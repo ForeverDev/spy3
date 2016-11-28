@@ -250,8 +250,8 @@ spy_execute(const char* filename) {
 
 			/* ICMP */
 			case 0x02: {
-				spy_integer a = spy_pop_int(spy);
 				spy_integer b = spy_pop_int(spy);
+				spy_integer a = spy_pop_int(spy);
 				/* set flags accordingly... */
 				if (a == b) {
 					spy->flags |= FLAG_EQ;
