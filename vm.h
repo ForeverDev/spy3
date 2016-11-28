@@ -1,12 +1,12 @@
-#ifndef Spy_H
-#define Spy_H
+#ifndef SPY_H
+#define SPY_H
 
 #include <stdint.h>
 #include "spy_types.h"
 
 #define SIZE_MEMORY 0x100000
 #define SIZE_STACK  0x010000
-#define SIZE_CODE	0x010000 /* TODO make this dynamic */
+#define SIZE_CODE	0x010000
 
 #define FLAG_EQ		(0x1 << 0) /* NEQ = !EQ */
 #define FLAG_GT		(0x1 << 1) /* GE = !LT */

@@ -146,8 +146,6 @@ spy_dump() {
 }
 
 /*
- * TODO: should static memory be loaded from code memory into
- * the spy's memory?  for now, just read it from code memory...
  *
  * note: there is no differentiation between code and data... the
  * first instructions that is executed is whatever is at code[0]...
