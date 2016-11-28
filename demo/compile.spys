@@ -1,0 +1,8 @@
+jmp main
+
+thing:	db "print\0"
+format: db "Hello, world!\0"
+
+main:
+		ipush	format
+		cfcall	thing, 10
