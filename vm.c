@@ -57,19 +57,19 @@ const SpyInstruction spy_instructions[255] = {
 	{"iinc", 0x2D, {OP_INT64}},				/* [int val = x] -> [int val = x + amount] */
 	{"pop", 0x2E, {OP_NONE}},				/* [64bit thing] -> [] */
 	{"iarg", 0x2F, {OP_INT64}},				/* [] -> [int value] */
-	{"carg", 0x30, {OP_INT64}},				/* [] -> [int value (casted uint8_t)] */
+	{"barg", 0x30, {OP_INT64}},				/* [] -> [int value (casted uint8_t)] */
 	{"lea", 0x31, {OP_INT64}},				/* [] -> [int addr] */
 	{"aisave", 0x32, {OP_INT64}},			/* [int value] -> [] */
-	{"acsave", 0x33, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
+	{"absave", 0x33, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
 	{"aider", 0x34, {OP_INT64}},			/* [] -> [int value] */
-	{"acder", 0x35, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
+	{"abder", 0x35, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
 	{"malloc", 0x36, {OP_NONE}},			/* [int num_bytes] -> [int ptr] */
 	{"free", 0x37, {OP_NONE}},				/* [int ptr] -> [] */
 	{"vret", 0x38, {OP_NONE}},				/* [int ip_save, int bp_save, int nargs] -> [int ret_val] */
 	{"ilocall", 0x39, {OP_INT64}},			/* [] -> [int value] */
-	{"clocall", 0x3A, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
+	{"blocall", 0x3A, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
 	{"ilocals", 0x3B, {OP_INT64}},			/* [int value] -> [] */
-	{"clocals", 0x3C, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
+	{"blocals", 0x3C, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
 
 	{NULL, 0x00, {OP_NONE}}		
 
@@ -548,7 +548,7 @@ spy_execute(const char* filename) {
 				break;
 			}
 				
-			/* CSAVE */
+			/* BSAVE */
 			case 0x2B: {
 				spy_byte value = spy_pop_byte(spy);
 				spy_integer addr = spy_pop_int(spy);
@@ -576,7 +576,7 @@ spy_execute(const char* filename) {
 				spy_push_int(spy, *(spy_integer *)&spy->bp[-3*8 - spy_code_int()*8]);
 				break;
 			
-			/* CARG */
+			/* BARG */
 			case 0x30:
 				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int()*8]);
 				break;
@@ -594,7 +594,7 @@ spy_execute(const char* filename) {
 				break;
 			}
 				
-			/* ACSAVE */
+			/* ABSAVE */
 			case 0x33: {	
 				spy_byte value = spy_pop_byte(spy);
 				spy_integer addr = spy_code_int(spy);
@@ -607,7 +607,7 @@ spy_execute(const char* filename) {
 				spy_push_int(spy, spy_mem_int(spy, spy_code_int()));
 				break;
 
-			/* ACDER */
+			/* ABDER */
 			case 0x35:
 				spy_push_byte(spy, spy_mem_int(spy, spy_code_int()));
 				break;
@@ -624,14 +624,12 @@ spy_execute(const char* filename) {
 				MemoryBlockList* next = head->next;
 				MemoryBlockList* tail = NULL;
 				int found_slot = 0;
-				/* otherise there is a list... try to find space between two blocks.
-				 * if no space is found, the chunk is placed at the end */
 				for (MemoryBlockList* i = spy->memory_map; i->next; i = i->next) {
 					spy_integer pending_addr = i->block->addr + i->block->bytes;
 					spy_integer delta = i->next->block->addr - pending_addr;
 					/* is there enough space to fit the block? */
 					if (new_list->block->bytes <= delta) {
-						/* found enough space: insert, assign, return */
+						/* found enough space: */
 						new_list->next = i->next;
 						new_list->prev = i;
 						i->next->prev = new_list;
@@ -644,6 +642,7 @@ spy_execute(const char* filename) {
 						tail = i->next;
 					}
 				}
+				/* space wasn't found... append to tail block */
 				if (!found_slot) {
 					if (tail) {
 						tail->next = new_list;
@@ -656,6 +655,7 @@ spy_execute(const char* filename) {
 					}
 				}
 				/* !!!! out of memory !!!! */
+				/* TODO defragment when OOM and retry */
 				if (new_list->block->addr + new_list->block->bytes >= SIZE_MEMORY) {
 					new_list->prev->next = NULL;
 					free(new_list->block);
@@ -687,7 +687,7 @@ spy_execute(const char* filename) {
 				spy_push_int(spy, *(spy_integer *)&spy->bp[8 + spy_code_int()]);
 				break;
 			
-			/* CLOCALL */
+			/* BLOCALL */
 			case 0x3A: 
 				spy_push_byte(spy, spy->bp[8 + spy_code_int()]);
 				break;
@@ -697,7 +697,7 @@ spy_execute(const char* filename) {
 				*(spy_integer *)&spy->bp[8 + spy_code_int()] = spy_pop_int(spy);
 				break;
 
-			/* CLOCALS */
+			/* BLOCALS */
 			case 0x3C:
 				spy->bp[8 + spy_code_int()] = spy_pop_byte(spy);
 				break;
