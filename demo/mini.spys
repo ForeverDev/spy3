@@ -1,13 +1,90 @@
 jmp main:
 
-; ----- LEXER ENTRY POINT -----
+; ----- API FUNCTIONS -----
+print: db "print\0"
+
+; ----- GLOBALS -----
+SIZEOF_TOKEN:			di 24
+SIZEOF_TOKEN_LIST:		di 16
+
+; ----- FUNCTIONS USED EVERYWHERE -----
+
+; ARGS
+;	0: bytes: int
+; RETURN
+;	0: ptr: byte^ 
+safe_malloc:
+	; stack map
+	; 0: bytes: int
+	; 1: malloc_result: byte^	
+	iarg	0
+	res		1 
+	
+	; [1] = malloc([0]);	
+	ilocall	0
+	malloc
+	ilocals 1		
+	
+	; jump to survived if not zero
+	ilocall 1
+	itest
+	jnz		.survived
+
+	; reached if zero... error 
+	iconst	.dietext
+	cfcall	print, 1
+	exit
+.survived:
+	ilocall	1
+	iret
+.dietext: db "MINICOMPILER: OUT OF MEMORY\n\0"
+
+
+
+; ----- START LEXER -----
+; struct Token {
+;	int type; (0 = NOTYPE, 1 = INTEGER, 2 = FLOAT, 3 = IDENTIFIER, 4 = OPERATOR)
+;	int line;
+;	union {
+;		int ival;
+;		float fval;
+;		byte^ sval;
+;		byte oval;
+;	};
+; };
+; sizeof(token) = 24
+
+; NOARGS
+new_token:
+	aider	SIZEOF_TOKEN
+	call	safe_malloc, 1
+	iret
+
+; NOARGS
+new_token_list:
+	aider	SIZEOF_TOKEN_LIST
+	call	safe_malloc, 1
+	iret
+
 ; ARGS
 ;	0: filename: byte^
 lex_main:
+	; stack map
+	; 0: filename: byte^
+	iarg	0
+	iconst	.format
+	cfcall	print, 2
+	vret
+.format: db "something: %s\n\0"
 	
 
-; ----- COMPILER ENTRY POINT -----
+; ----- ENTRY POINT -----
 main:
+	; lex_main(filename)
+	iconst	.filename
+	call	lex_main, 1
 
-.filename: db "
+	exit
+
+.filename: db "sample_file.spy\0"
 	

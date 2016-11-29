@@ -65,6 +65,11 @@ const SpyInstruction spy_instructions[255] = {
 	{"acder", 0x35, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
 	{"malloc", 0x36, {OP_NONE}},			/* [int num_bytes] -> [int ptr] */
 	{"free", 0x37, {OP_NONE}},				/* [int ptr] -> [] */
+	{"vret", 0x38, {OP_NONE}},				/* [int ip_save, int bp_save, int nargs] -> [int ret_val] */
+	{"ilocall", 0x39, {OP_INT64}},			/* [] -> [int value] */
+	{"clocall", 0x3A, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
+	{"ilocals", 0x3B, {OP_INT64}},			/* [int value] -> [] */
+	{"clocals", 0x3C, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
 
 	{NULL, 0x00, {OP_NONE}}		
 
@@ -665,6 +670,38 @@ spy_execute(const char* filename) {
 			/* FREE */
 			case 0x37:
 				break;
+
+			/* VRET */
+			case 0x38: {
+				spy_integer nargs;
+				spy->sp = spy->bp;
+				nargs = spy_pop_int(spy);
+				spy->bp = (uint8_t *)spy_pop_int(spy);
+				spy->ip = (uint8_t *)spy_pop_int(spy);
+				spy->sp -= nargs * 8;
+				break;
+			}
+
+			/* ILOCALL */
+			case 0x39:
+				spy_push_int(spy, *(spy_integer *)&spy->bp[8 + spy_code_int()]);
+				break;
+			
+			/* CLOCALL */
+			case 0x3A: 
+				spy_push_byte(spy, spy->bp[8 + spy_code_int()]);
+				break;
+			
+			/* ILOCALS */
+			case 0x3B:
+				*(spy_integer *)&spy->bp[8 + spy_code_int()] = spy_pop_int(spy);
+				break;
+
+			/* CLOCALS */
+			case 0x3C:
+				spy->bp[8 + spy_code_int()] = spy_pop_byte(spy);
+				break;
+
 			
 		}
 
