@@ -586,7 +586,7 @@ spy_execute(const char* filename) {
 				spy_push_int(spy, (spy_integer)(&spy->bp[8 + spy_code_int()*8] - spy->memory));
 				break;
 
-			/* AISAVE (integer absolute save) */
+			/* AISAVE (absolute integer save) */
 			case 0x32: {
 				spy_integer value = spy_pop_int(spy);
 				spy_integer addr = spy_code_int(spy);
