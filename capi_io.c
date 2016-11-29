@@ -15,6 +15,9 @@ io_print(SpyState* spy) {
 					case 'd':
 						length += printf("%lld", spy_pop_int(spy));
 						break;
+					case 'x':
+						length += printf("%llx", spy_pop_int(spy));
+						break;
 					case 'f':
 						/* TODO implement float format */
 						break;

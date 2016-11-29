@@ -14,6 +14,8 @@
 #define FLAG_Z		(0x1 << 3) /* NZ = !Z */
 #define FLAG_S		(0x1 << 4) /* NS = !S */
 
+#define MALLOC_CHUNK 16 /* must be multiple of 8 */
+
 /* NOTES
  * 
  * CODE LAYOUT:
@@ -25,6 +27,8 @@ typedef struct SpyState SpyState;
 typedef struct SpyCFunc SpyCFunc;
 typedef struct SpyCFuncList SpyCFuncList;
 typedef struct SpyInstruction SpyInstruction;
+typedef struct MemoryBlock MemoryBlock;
+typedef struct MemoryBlockList MemoryBlockList;
 
 struct SpyState {
 	spy_byte* memory;	
@@ -33,6 +37,7 @@ struct SpyState {
 	spy_byte* bp;
 	spy_byte* code;
 	SpyCFuncList* cfuncs;
+	MemoryBlockList* memory_map;
 	uint16_t flags;
 };
 
@@ -45,6 +50,17 @@ struct SpyCFuncList {
 	SpyCFunc* cfunc;
 	SpyCFuncList* next;
 };	
+
+struct MemoryBlock {
+	spy_integer addr; /* index into spy->memory */
+	unsigned int bytes;	
+};
+
+struct MemoryBlockList {
+	MemoryBlock* block;
+	MemoryBlockList* next;	
+	MemoryBlockList* prev;
+};
 
 struct SpyInstruction {
 	const char* name;

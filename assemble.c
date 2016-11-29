@@ -206,6 +206,8 @@ void generate_bytecode(const char* infile, const char* outfile) {
 				register_label(&A, on_word, cindex);
 				A.tokens = A.tokens->next; /* skip colon */	
 			}
+		} else if (A.tokens->token->type == TOK_STRING) {
+			asm_die(&A, "unexpected string");
 		}
 		if (!A.tokens) {
 			break;

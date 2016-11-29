@@ -251,6 +251,18 @@ generate_tokens(const char* filename) {
 			L.current_line++;
 			continue;
 		}
+		if (*L.contents == ';') {
+			L.contents++;
+			while (*L.contents) {
+				if (*L.contents == '\n') {
+					L.contents++;
+					L.current_line++;
+					break;
+				}
+				L.contents++;
+			}
+			continue;
+		}
 		if (matches_identifier(&L)) {
 			lex_identifier(&L);
 		} else if (matches_float(&L)) {

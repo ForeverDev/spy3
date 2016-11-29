@@ -10,7 +10,7 @@ static SpyState* spy = NULL;
 
 const SpyInstruction spy_instructions[255] = {
 	{"NOP", 0x00, {OP_NONE}},				/* [] -> [] */
-	{"ipush", 0x01, {OP_INT64}},			/* [] -> [int val] */
+	{"iconst", 0x01, {OP_INT64}},			/* [] -> [int val] */
 	{"icmp", 0x02, {OP_NONE}},				/* [int a, int b] -> [] */
 	{"itest", 0x03, {OP_NONE}},				/* [int a] -> [] */
 	{"je", 0x04, {OP_INT64}},				/* [] -> [] */
@@ -57,7 +57,14 @@ const SpyInstruction spy_instructions[255] = {
 	{"iinc", 0x2D, {OP_INT64}},				/* [int val = x] -> [int val = x + amount] */
 	{"pop", 0x2E, {OP_NONE}},				/* [64bit thing] -> [] */
 	{"iarg", 0x2F, {OP_INT64}},				/* [] -> [int value] */
-	{"carg", 0x30, {OP_INT64}},				/* [] -> int value (casted uint8_t)] */
+	{"carg", 0x30, {OP_INT64}},				/* [] -> [int value (casted uint8_t)] */
+	{"lea", 0x31, {OP_INT64}},				/* [] -> [int addr] */
+	{"aisave", 0x32, {OP_INT64}},			/* [int value] -> [] */
+	{"acsave", 0x33, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
+	{"aider", 0x34, {OP_INT64}},			/* [] -> [int value] */
+	{"acder", 0x35, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
+	{"malloc", 0x36, {OP_NONE}},			/* [int num_bytes] -> [int ptr] */
+	{"free", 0x37, {OP_NONE}},				/* [int ptr] -> [] */
 
 	{NULL, 0x00, {OP_NONE}}		
 
@@ -83,6 +90,15 @@ spy_init() {
 	spy->cfuncs->cfunc = NULL;
 	spy->cfuncs->next = NULL;
 	spy_init_capi(spy);
+
+	/* initialize memory map */
+	spy->memory_map = malloc(sizeof(MemoryBlockList));
+	/* first block marks the start of the heap */
+	spy->memory_map->block = malloc(sizeof(MemoryBlock));;
+	spy->memory_map->block->bytes = 0;
+	spy->memory_map->block->addr = SIZE_CODE + SIZE_STACK;
+	spy->memory_map->next = NULL;
+	spy->memory_map->prev = NULL;
 
 }
 
@@ -243,7 +259,7 @@ spy_execute(const char* filename) {
 			case 0x00: 
 				break;
 
-			/* IPUSH */
+			/* ICONST */
 			case 0x01: 
 				spy_push_int(spy, spy_code_int());
 				break;
@@ -554,7 +570,102 @@ spy_execute(const char* filename) {
 			case 0x2F:
 				spy_push_int(spy, *(spy_integer *)&spy->bp[-3*8 - spy_code_int()*8]);
 				break;
-					
+			
+			/* CARG */
+			case 0x30:
+				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int()*8]);
+				break;
+
+			/* LEA */
+			case 0x31:
+				spy_push_int(spy, (spy_integer)(&spy->bp[8 + spy_code_int()*8] - spy->memory));
+				break;
+
+			/* AISAVE (integer absolute save) */
+			case 0x32: {
+				spy_integer value = spy_pop_int(spy);
+				spy_integer addr = spy_code_int(spy);
+				spy_save_int(spy, addr, value);	
+				break;
+			}
+				
+			/* ACSAVE */
+			case 0x33: {	
+				spy_byte value = spy_pop_byte(spy);
+				spy_integer addr = spy_code_int(spy);
+				spy_save_byte(spy, addr, value);
+				break;
+			}
+
+			/* AIDER */
+			case 0x34: 
+				spy_push_int(spy, spy_mem_int(spy, spy_code_int()));
+				break;
+
+			/* ACDER */
+			case 0x35:
+				spy_push_byte(spy, spy_mem_int(spy, spy_code_int()));
+				break;
+			
+			/* MALLOC */
+			case 0x36: {
+				spy_integer requested_bytes = spy_pop_int(spy);
+				MemoryBlockList* new_list = malloc(sizeof(MemoryBlockList));
+				new_list->next = NULL;
+				new_list->prev = NULL;
+				new_list->block = malloc(sizeof(MemoryBlock));
+				new_list->block->bytes = requested_bytes + (MALLOC_CHUNK % requested_bytes);
+				MemoryBlockList* head = spy->memory_map;
+				MemoryBlockList* next = head->next;
+				MemoryBlockList* tail = NULL;
+				int found_slot = 0;
+				/* otherise there is a list... try to find space between two blocks.
+				 * if no space is found, the chunk is placed at the end */
+				for (MemoryBlockList* i = spy->memory_map; i->next; i = i->next) {
+					spy_integer pending_addr = i->block->addr + i->block->bytes;
+					spy_integer delta = i->next->block->addr - pending_addr;
+					/* is there enough space to fit the block? */
+					if (new_list->block->bytes <= delta) {
+						/* found enough space: insert, assign, return */
+						new_list->next = i->next;
+						new_list->prev = i;
+						i->next->prev = new_list;
+						i->next = new_list->next;
+						new_list->block->addr = pending_addr;
+						found_slot = 1;
+						break;
+					}
+					if (!i->next->next) {
+						tail = i->next;
+					}
+				}
+				if (!found_slot) {
+					if (tail) {
+						tail->next = new_list;
+						new_list->prev = tail;
+						new_list->block->addr = tail->block->addr + tail->block->bytes;
+					} else {
+						new_list->block->addr = head->block->addr;
+						new_list->prev = head;
+						head->next = new_list;
+					}
+				}
+				/* !!!! out of memory !!!! */
+				if (new_list->block->addr + new_list->block->bytes >= SIZE_MEMORY) {
+					new_list->prev->next = NULL;
+					free(new_list->block);
+					free(new_list);
+					spy_push_int(spy, 0);
+				} else {
+					spy_push_int(spy, new_list->block->addr);
+				}
+				break;
+			}
+
+			/* FREE */
+			case 0x37:
+				break;
+			
 		}
 
 	} while (opcode != 0x00);
