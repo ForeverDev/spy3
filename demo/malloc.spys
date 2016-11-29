@@ -1,0 +1,19 @@
+jmp main
+
+print: db "print\0"
+
+main:
+	iconst	50
+	malloc
+	iconst	.strformat
+	cfcall	print, 2
+	iconst	50
+	malloc
+	iconst	.strformat
+	cfcall	print, 2
+	iconst	50
+	malloc
+	iconst	.strformat
+	cfcall	print, 2
+	exit
+.strformat: db "malloc gave 0x%x\n\0"

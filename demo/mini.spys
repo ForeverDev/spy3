@@ -1,0 +1,13 @@
+jmp main:
+
+; ----- LEXER ENTRY POINT -----
+; ARGS
+;	0: filename: byte^
+lex_main:
+	
+
+; ----- COMPILER ENTRY POINT -----
+main:
+
+.filename: db "
+	
