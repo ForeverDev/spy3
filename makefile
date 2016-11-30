@@ -1,5 +1,5 @@
 CC = gcc
-CF = -std=c11 -g -Wno-int-to-pointer-cast -Wno-switch
+CF = -std=c11 -g -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-switch
 OBJ = build/main.o build/vm.o build/asmlex.o build/assemble.o build/spylib.o build/capi_io.o build/capi_load.o 
 
 all: spy.exe
@@ -9,8 +9,12 @@ clean:
 
 spy.exe: build $(OBJ)
 	$(CC) $(CF) $(OBJ) -o spy.exe
-	mv spy.exe /usr/local/bin/spy
-	#mv spy.exe C:\MinGW\bin\spy.exe
+ifeq ($(OS),Windows_NT)
+	cp spy.exe C:\MinGW\bin\spy.exe
+else
+	cp spy.exe /usr/local/bin/spy
+endif
+	rm spy.exe
 
 build:
 	mkdir build

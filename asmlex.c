@@ -78,6 +78,11 @@ matches_operator(Lexer* L) {
 	return ispunct(*L->contents) && *L->contents != '_';
 }
 
+static int
+matches_character(Lexer* L) {
+	return *L->contents == '\'';
+}
+
 static void
 lex_float(Lexer* L) {
 	char* buf;
@@ -128,6 +133,21 @@ lex_integer(Lexer* L) {
 	append_token(L, token);
 	free(buf);
 }
+
+static void
+lex_character(Lexer* L) {
+	/* starts on ' */
+	Token* token;
+	L->contents++;
+	token = malloc(sizeof(Token));
+	token->type = TOK_INTEGER;
+	token->ival = (int64_t)*L->contents++;
+	if (*L->contents != '\'') {
+		lex_die(L, "expected closing single quote");
+	}
+	append_token(L, token);
+	L->contents++;
+}	
 
 static void
 lex_string(Lexer* L) {
@@ -265,6 +285,8 @@ generate_tokens(const char* filename) {
 		}
 		if (matches_identifier(&L)) {
 			lex_identifier(&L);
+		} else if (matches_character(&L)) {
+			lex_character(&L);
 		} else if (matches_float(&L)) {
 			lex_float(&L);
 		} else if (matches_integer(&L)) {
