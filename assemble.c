@@ -117,6 +117,7 @@ get_label(Assembler* A, const char* name) {
 	}
 	die: /* nasty label but it makes things easier */
 	asm_die(A, "unknown label '%s'", name);
+	return NULL;
 }
 
 void generate_bytecode(const char* infile, const char* outfile) {

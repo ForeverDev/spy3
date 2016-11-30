@@ -2,10 +2,19 @@ jmp main:
 
 ; ----- API FUNCTIONS -----
 print: db "print\0"
+fopen: db "fopen\0"
+ftell: db "ftell\0"
+fgetc: db "fgetc\0"
+fseek: db "fseek\0"
+fread: db "fread\0"
 
 ; ----- GLOBALS -----
 SIZEOF_TOKEN:			di 24
 SIZEOF_TOKEN_LIST:		di 16
+SEEK_SET:				di 1
+SEEK_END:				di 2
+SEEK_CUR:				di 3 
+FORMAT_NUM:				db "NUM: %d\n\0"
 
 ; ----- FUNCTIONS USED EVERYWHERE -----
 
@@ -71,11 +80,97 @@ new_token_list:
 lex_main:
 	; stack map
 	; 0: filename: byte^
+	; 1: handle: FILE*
+	; 2: contents: byte^
+	; 50+: general purpose
 	iarg	0
-	iconst	.format
+	res		100
+	
+	; fopen([0], "rb");	
+	iconst	.rb	
+	ilocall	0
+	cfcall	fopen, 2
+	ilocals	1
+	
+	; abort and print error message if file can't be opened
+	ilocall	1
+	itest
+	jnz		.fsafe
+	; !! failed !!
+	ilocall	0
+	iconst	.ffail
 	cfcall	print, 2
+	pop
+	exit
+.fsafe:
+	
+	; get length of file
+	; fseek([1], SEEK_END, 0);
+	iconst	0
+	aider	SEEK_END
+	ilocall	1
+	cfcall	fseek, 3
+	pop
+
+	; [50] = ftell([1]);
+	ilocall	1
+	cfcall	ftell, 1
+	ilocals	50
+	
+	; fseek([1], SEEK_SET, 0);
+	iconst	0
+	aider	SEEK_SET
+	ilocall	1
+	cfcall	fseek, 3
+	pop
+
+	; [2] = malloc([50] + 1);
+	ilocall	50
+	iinc	1
+	call	safe_malloc, 2
+	ilocals	2
+
+	; fread([1], [2], [50]);
+	ilocall	50
+	ilocall	2
+	ilocall	1
+	cfcall	fread, 3
+	pop
+
+	; *([2] + [50]) = 0
+	ilocall	2
+	ilocall	50
+	iadd
+	iconst	0
+	isave
+	
+	; the contents of the file are now loaded into [2]...
+	; now, lex the file
+
+	; [3] will be used to scan the contents, [2] will remain
+	; the contents pointer
+	ilocall	2
+	ilocals	3
+
+.looptop:
+	; while (*[3] != 0)
+	ilocall	3
+	bder
+	itest	
+	jz		.loopbot
+	
+	; increment pointer, store back in [3], loop	
+	ilocall	3
+	iinc	1
+	ilocals	3
+	jmp		.looptop
+.loopbot:
+
 	vret
-.format: db "something: %s\n\0"
+.rb: db "rb\0"
+.char: db "READ CHARACTER: %c\n\0"
+.ffail: db "COULDN'T OPEN '%s'. ABORT\n\0"
+.contents: db "CONTENTS: %s\n\0"
 	
 
 ; ----- ENTRY POINT -----
@@ -86,5 +181,5 @@ main:
 
 	exit
 
-.filename: db "sample_file.spy\0"
+.filename: db "demo/sample_file.spy\0"
 	

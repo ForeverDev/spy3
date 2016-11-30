@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "spylib.h"
 
 void
@@ -9,7 +10,7 @@ spy_push_int(SpyState* spy, spy_integer value) {
 void
 spy_push_byte(SpyState* spy, spy_byte value) {
 	spy->sp += 8;
-	*spy->sp = value;
+	*(spy_integer *)spy->sp = (spy_integer)value;
 }
 
 spy_integer
@@ -28,7 +29,7 @@ spy_pop_byte(SpyState* spy) {
 
 const spy_string
 spy_gets(SpyState* spy, spy_integer addr) {
-	return &spy->memory[addr];
+	return (spy_string)&spy->memory[addr];
 }
 
 spy_integer

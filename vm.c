@@ -162,7 +162,7 @@ void
 spy_dump() {
 	printf("STACK: \n");
 	for (uint8_t* i = spy->sp; i >= &spy->memory[SIZE_CODE] + 8; i -= 8) {
-		printf("\t[SP + 0x%04x]: %lld\n", i - &spy->memory[SIZE_CODE], *(spy_integer *)i);
+		printf("\t[SP + 0x%04lx]: %lld\n", i - &spy->memory[SIZE_CODE], *(spy_integer *)i);
 	}
 	printf("FLAGS: \n");
 	printf("\tEQ:   %d\n", (spy->flags & FLAG_EQ) != 0);
@@ -257,7 +257,7 @@ spy_execute(const char* filename) {
 			spy_die("stack overflow");
 		}
 
-		opcode = spy_code_int8(spy);
+		opcode = spy_code_int8();
 
 		switch (opcode) {
 			/* NOP */
@@ -532,12 +532,12 @@ spy_execute(const char* filename) {
 
 			/* IDER */
 			case 0x28:
-				spy_push_int(spy, spy_mem_int(spy, spy_pop_int(spy)));
+				spy_push_int(spy, *(spy_integer *)&spy->memory[spy_pop_int(spy)]);
 				break;
 
 			/* BDER */
 			case 0x29:
-				spy_push_byte(spy, spy_mem_byte(spy, spy_pop_int(spy)));
+				spy_push_byte(spy, spy->memory[spy_pop_int(spy)]);
 				break;
 
 			/* ISAVE */
@@ -558,7 +558,7 @@ spy_execute(const char* filename) {
 
 			/* RES */
 			case 0x2C:
-				spy->sp += spy_code_int(spy)*8;
+				spy->sp += spy_code_int()*8;
 				break;
 
 			/* IINC */
@@ -589,7 +589,7 @@ spy_execute(const char* filename) {
 			/* AISAVE (absolute integer save) */
 			case 0x32: {
 				spy_integer value = spy_pop_int(spy);
-				spy_integer addr = spy_code_int(spy);
+				spy_integer addr = spy_code_int();
 				spy_save_int(spy, addr, value);	
 				break;
 			}
@@ -597,7 +597,7 @@ spy_execute(const char* filename) {
 			/* ABSAVE */
 			case 0x33: {	
 				spy_byte value = spy_pop_byte(spy);
-				spy_integer addr = spy_code_int(spy);
+				spy_integer addr = spy_code_int();
 				spy_save_byte(spy, addr, value);
 				break;
 			}
@@ -684,26 +684,27 @@ spy_execute(const char* filename) {
 
 			/* ILOCALL */
 			case 0x39:
-				spy_push_int(spy, *(spy_integer *)&spy->bp[8 + spy_code_int()]);
+				spy_push_int(spy, *(spy_integer *)&spy->bp[8 + spy_code_int()*8]);
 				break;
 			
 			/* BLOCALL */
 			case 0x3A: 
-				spy_push_byte(spy, spy->bp[8 + spy_code_int()]);
+				spy_push_byte(spy, spy->bp[8 + spy_code_int()*8]);
 				break;
 			
 			/* ILOCALS */
 			case 0x3B:
-				*(spy_integer *)&spy->bp[8 + spy_code_int()] = spy_pop_int(spy);
+				*(spy_integer *)&spy->bp[8 + spy_code_int()*8] = spy_pop_int(spy);
 				break;
 
 			/* BLOCALS */
 			case 0x3C:
-				spy->bp[8 + spy_code_int()] = spy_pop_byte(spy);
+				spy->bp[8 + spy_code_int()*8] = spy_pop_byte(spy);
 				break;
 
 			
 		}
 
 	} while (opcode != 0x00);
+
 }
