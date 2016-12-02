@@ -43,7 +43,7 @@ struct SpyState {
 
 struct SpyCFunc {
 	char* name;
-	spy_integer (*f)(SpyState*);
+	spy_int (*f)(SpyState*);
 };
 
 struct SpyCFuncList {
@@ -52,7 +52,7 @@ struct SpyCFuncList {
 };	
 
 struct MemoryBlock {
-	spy_integer addr; /* index into spy->memory */
+	spy_int addr; /* index into spy->memory */
 	unsigned int bytes;	
 };
 

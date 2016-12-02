@@ -260,10 +260,18 @@ void generate_bytecode(const char* infile, const char* outfile) {
 							}
 							break;
 						case OP_FLOAT64:
-							if (A.tokens->token->type == TOK_FLOAT) {
-								fwrite(&A.tokens->token->fval, 1, sizeof(double), A.handle);
-							} else {
-								asm_die(&A, "operand %d should be a float", i + 1);
+							switch (A.tokens->token->type) {
+								case TOK_FLOAT:
+									fwrite(&A.tokens->token->fval, 1, sizeof(double), A.handle);
+									break;
+								case TOK_IDENTIFIER: {
+									/* label needs a memory address */
+									int64_t label = get_label(&A, A.tokens->token->sval)->addr;
+									fwrite(&label, 1, sizeof(int64_t), A.handle);
+									break;
+								}
+								default:
+									asm_die(&A, "operand %d should be a float or a label", i + 1);
 							}
 							break;
 						case OP_UINT32:
@@ -281,7 +289,7 @@ void generate_bytecode(const char* infile, const char* outfile) {
 			} else if (!strcmp(A.tokens->token->sval, "df")) {
 				A.tokens = A.tokens->next;
 				if (A.tokens->token->type != TOK_FLOAT) {
-					asm_die(&A, "expected double");
+					asm_die(&A, "expected float");
 				}
 				fwrite(&A.tokens->token->fval, 1, sizeof(double), A.handle);
 			} else if (!strcmp(A.tokens->token->sval, "db")) {

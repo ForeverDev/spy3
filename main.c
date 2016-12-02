@@ -28,7 +28,6 @@ int main(int argc, char** argv) {
 	generate_bytecode(fasm, fbin);
 	spy_init();
 	spy_execute(fbin);
-	spy_dump();
 
 	return 0;
 

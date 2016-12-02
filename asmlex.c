@@ -47,15 +47,23 @@ append_token(Lexer* L, Token* token) {
 
 static int
 matches_integer(Lexer* L) {
-	return isdigit(*L->contents) || (*L->contents == '0' && L->contents[1] == 'x');
+	char* check = L->contents;
+	if (*check == '-') {
+		check++;
+	}
+	return isdigit(*check) || (*check == '0' && check[1] == 'x');
 }
 
 static int
 matches_float(Lexer* L) {
-	if (!isdigit(*L->contents)) {
+	char* check = L->contents;
+	if (*check == '-') {
+		check++;
+	}
+	if (!isdigit(*check)) {
 		return 0;
 	}
-	char* scan = &L->contents[1];
+	char* scan = &check[1];
 	while (isdigit(*scan)) {
 		scan++;
 	}
@@ -89,6 +97,11 @@ lex_float(Lexer* L) {
 	size_t dist;
 	Token* token;
 	char* start;
+	int sign = 1;
+	if (*L->contents == '-') {
+		sign = -1;
+		L->contents++;
+	}
 	start = L->contents;
 	while (isdigit(*L->contents)) {
 		L->contents++;
@@ -103,7 +116,7 @@ lex_float(Lexer* L) {
 	buf[dist] = 0;
 	token = malloc(sizeof(Token));
 	token->type = TOK_FLOAT;
-	token->fval = strtod(buf, NULL);
+	token->fval = strtod(buf, NULL) * sign;
 	append_token(L, token);
 	free(buf);
 }
@@ -114,6 +127,11 @@ lex_integer(Lexer* L) {
 	size_t dist;
 	Token* token;
 	char* start;
+	int sign = 1;
+	if (*L->contents == '-') {
+		sign = -1;
+		L->contents++;
+	}
 	int base = (*L->contents == '0' && L->contents[1] == 'x') ? 16 : 10;
 	/* if it's hex, ignore first two characters */
 	if (base == 16) {
@@ -129,7 +147,7 @@ lex_integer(Lexer* L) {
 	buf[dist] = 0;
 	token = malloc(sizeof(Token));
 	token->type = TOK_INTEGER;
-	token->ival = (int64_t)strtoll(buf, NULL, base);
+	token->ival = (int64_t)strtoll(buf, NULL, base) * sign;
 	append_token(L, token);
 	free(buf);
 }

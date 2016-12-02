@@ -8,6 +8,7 @@
 
 static SpyState* spy = NULL;
 
+/* TODO all float instructions */
 const SpyInstruction spy_instructions[255] = {
 	{"NOP", 0x00, {OP_NONE}},				/* [] -> [] */
 	{"iconst", 0x01, {OP_INT64}},			/* [] -> [int val] */
@@ -70,6 +71,39 @@ const SpyInstruction spy_instructions[255] = {
 	{"blocall", 0x3A, {OP_INT64}},			/* [] -> [int value (casted uint8_t)] */
 	{"ilocals", 0x3B, {OP_INT64}},			/* [int value] -> [] */
 	{"blocals", 0x3C, {OP_INT64}},			/* [int value (casted uint8_t)] -> [] */
+	{"pe", 0x3D, {OP_NONE}},				/* [] -> [int flag] */
+	{"pne", 0x3E, {OP_NONE}},				/* [] -> [int flag] */
+	{"pgt", 0x3F, {OP_NONE}},				/* [] -> [int flag] */
+	{"pge", 0x40, {OP_NONE}},				/* [] -> [int flag] */
+	{"plt", 0x41, {OP_NONE}},				/* [] -> [int flag] */
+	{"ple", 0x42, {OP_NONE}},				/* [] -> [int flag] */
+	{"pz", 0x43, {OP_NONE}},				/* [] -> [int flag] */
+	{"pnz", 0x44, {OP_NONE}},				/* [] -> [int flag] */
+	{"ps", 0x45, {OP_NONE}},				/* [] -> [int flag] */
+	{"pns", 0x46, {OP_NONE}},				/* [] -> [int flag] */
+	{"fconst", 0x47, {OP_FLOAT64}},			/* [] -> [float value] */
+	{"fcmp", 0x48, {OP_NONE}},				/* [float a, float b] -> [] */
+	{"ftest", 0x49, {OP_NONE}},				/* [float value] -> [] */
+	{"fadd", 0x4A, {OP_NONE}},				/* [float a, float b] -> [float resu;t] */
+	{"fsub", 0x4B, {OP_NONE}},				/* [float a, float b] -> [float resu;t] */
+	{"fmul", 0x4C, {OP_NONE}},				/* [float a, float b] -> [float resu;t] */
+	{"fdiv", 0x4D, {OP_NONE}},				/* [float a, float b] -> [float resu;t] */
+	{"finc", 0x4E, {OP_FLOAT64}},			/* [float value] -> [float value] */
+	{"fret", 0x4F, {OP_NONE}},				/* [float value] -> [float value] */	
+	{"flocall", 0x50, {OP_INT64}},			/* [] -> [float value] */	
+	{"flocals", 0x51, {OP_INT64}},			/* [float value] -> [] */
+	{"afsave", 0x52, {OP_INT64}},			/* [float value] -> [] */
+	{"afder", 0x53, {OP_INT64}},			/* [] -> [float value] */
+	{"fder", 0x54, {OP_NONE}},				/* [int addr] -> [float value] */
+	{"farg", 0x55, {OP_INT64}},				/* [] -> [float value] */
+	{"itof", 0x56, {OP_NONE}},				/* [int value] -> [float value] */
+	{"ftoi", 0x57, {OP_NONE}},				/* [float value] -> [int value] */
+
+	/* debuggers */
+	{"ilog", 0xFD, {OP_NONE}},				
+	{"blog", 0xFE, {OP_NONE}},
+	{"flog", 0xFF, {OP_NONE}},
+
 
 	{NULL, 0x00, {OP_NONE}}		
 
@@ -119,9 +153,16 @@ spy_code_uint32() {
 	return ret;
 }
 
-static spy_integer
-spy_code_int() {
-	spy_integer ret = *(spy_integer *)spy->ip;
+static spy_int
+spy_code_int64() {
+	spy_int ret = *(spy_int *)spy->ip;
+	spy->ip += 8;
+	return ret;
+}
+
+static spy_float
+spy_code_float() {
+	spy_float ret = *(spy_float *)spy->ip;
 	spy->ip += 8;
 	return ret;
 }
@@ -162,7 +203,7 @@ void
 spy_dump() {
 	printf("STACK: \n");
 	for (uint8_t* i = spy->sp; i >= &spy->memory[SIZE_CODE] + 8; i -= 8) {
-		printf("\t[SP + 0x%04lx]: %lld\n", i - &spy->memory[SIZE_CODE], *(spy_integer *)i);
+		printf("\t[SP + 0x%04lx]: %lld\n", i - &spy->memory[SIZE_CODE], *(spy_int *)i);
 	}
 	printf("FLAGS: \n");
 	printf("\tEQ:   %d\n", (spy->flags & FLAG_EQ) != 0);
@@ -190,7 +231,7 @@ spy_execute(const char* filename) {
 	/* read file contents into code */
 	uint8_t* code;
 	FILE* handle;
-	spy_integer flen;
+	spy_int flen;
 
 	handle = fopen(filename, "rb");
 	if (!handle) {
@@ -228,7 +269,7 @@ spy_execute(const char* filename) {
 
 	#define JMPCOND(cond) \
 		{ \
-			spy_integer addr = spy_code_int(); \
+			spy_int addr = spy_code_int64(); \
 			if ((cond)) { \
 				spy->ip = &code[addr]; \
 			} \
@@ -236,7 +277,7 @@ spy_execute(const char* filename) {
 
 	#define CJMPCOND(cond) \
 		{ \
-			spy_integer addr = spy_pop_int(spy); \
+			spy_int addr = spy_pop_int(spy); \
 			if ((cond)) { \
 				spy->ip = &code[addr]; \
 			} \
@@ -244,10 +285,59 @@ spy_execute(const char* filename) {
 
 	#define INTARITH(op) \
 		{ \
-			spy_integer b = spy_pop_int(spy); \
-			spy_integer a = spy_pop_int(spy); \
+			spy_int b = spy_pop_int(spy); \
+			spy_int a = spy_pop_int(spy); \
 			spy_push_int(spy, a op b); \
 		}
+	
+	#define FLOATARITH(op) \
+		{ \
+			spy_float b = spy_pop_float(spy); \
+			spy_float a = spy_pop_float(spy); \
+			spy_push_float(spy, a op b); \
+		}
+
+	#define CMPTYPE(type) \
+		{ \
+			spy_ ## type b = spy_pop_ ## type(spy); \
+			spy_ ## type a = spy_pop_ ## type(spy); \
+			if (a == b) { \
+				spy->flags |= FLAG_EQ; \
+				spy->flags &= ~(FLAG_LT | FLAG_GT); \
+			} else if (a > b) { \
+				spy->flags |= FLAG_GT; \
+				spy->flags &= ~(FLAG_LT | FLAG_EQ); \
+			} else { \
+				spy->flags |= FLAG_LT; \
+				spy->flags &= ~(FLAG_GT | FLAG_EQ); \
+			} \
+			if (a - b > 0) { \
+				spy->flags &= ~FLAG_S; \
+			} else { \
+				spy->flags |= FLAG_S; \
+			} \
+		} 
+
+	#define TESTTYPE(type) \
+		{ \
+			spy_ ## type a = spy_pop_ ## type(spy); \
+			if (a == 0) { \
+				spy->flags |= FLAG_Z; \
+			} else { \
+				spy->flags &= ~FLAG_Z; \
+			} \
+			if (a < 0) { \
+				spy->flags |= FLAG_S; \
+			} else { \
+				spy->flags &= ~FLAG_S; \
+			} \
+		}
+
+	#define PUSHFLAG(flag) spy_push_int(spy, (spy->flags & (flag)) != 0)
+	
+	#define PUSHNOTFLAG(flag) spy_push_int(spy, !(spy->flags & (flag)))
+			
+
 
 	/* go */
 	do {
@@ -266,50 +356,19 @@ spy_execute(const char* filename) {
 
 			/* ICONST */
 			case 0x01: 
-				spy_push_int(spy, spy_code_int());
+				spy_push_int(spy, spy_code_int64());
 				break;
 
 			/* ICMP */
-			case 0x02: {
-				spy_integer b = spy_pop_int(spy);
-				spy_integer a = spy_pop_int(spy);
-				/* set flags accordingly... */
-				if (a == b) {
-					spy->flags |= FLAG_EQ;
-					spy->flags &= ~(FLAG_LT | FLAG_GT);
-				} else if (a > b) {
-					spy->flags |= FLAG_GT;
-					spy->flags &= ~(FLAG_LT | FLAG_EQ);
-				} else {
-					/* a < b */
-					spy->flags |= FLAG_LT;
-					spy->flags &= ~(FLAG_GT | FLAG_EQ);
-				}
-				/* sign flag set based on (a - b) cuz why not */
-				if (a - b > 0) {
-					spy->flags &= ~FLAG_S;
-				} else {
-					spy->flags |= FLAG_S;
-				}
-				/* cant do anything with Z or NZ flags... */
+			case 0x02: 
+				CMPTYPE(int);
 				break;
-			}
+			
 
 			/* ITEST */
-			case 0x03: {
-				spy_integer a = spy_pop_int(spy);
-				if (a == 0) {
-					spy->flags |= FLAG_Z;
-				} else {
-					spy->flags &= ~FLAG_Z;
-				}
-				if (a < 0) {
-					spy->flags |= FLAG_S;
-				} else {
-					spy->flags &= ~FLAG_S;
-				}
+			case 0x03: 
+				TESTTYPE(int);
 				break;
-			}
 			
 			/* JE */	
 			case 0x04: 
@@ -328,7 +387,7 @@ spy_execute(const char* filename) {
 	
 			/* JGE */
 			case 0x07:
-				JMPCOND(!(spy->flags & FLAG_GT));
+				JMPCOND(!(spy->flags & FLAG_LT));
 				break;
 
 			/* JLT */
@@ -468,12 +527,12 @@ spy_execute(const char* filename) {
 
 			/* CALL */
 			case 0x23: {
-				spy_integer addr = spy_code_int();
-				spy_integer nargs = spy_code_int();
+				spy_int addr = spy_code_int64();
+				spy_int nargs = spy_code_int64();
 				/* save things on stack */
 				spy_push_int(spy, (intptr_t)spy->ip);	/* save ip */
 				spy_push_int(spy, (intptr_t)spy->bp);	/* save bp */
-				spy_push_int(spy, (spy_integer)nargs);  /* save nargs */
+				spy_push_int(spy, (spy_int)nargs);  /* save nargs */
 				spy->bp = spy->sp;
 				spy->ip = &code[addr];
 				break;
@@ -481,12 +540,12 @@ spy_execute(const char* filename) {
 			
 			/* CCALL (computed call, NOT C-func call) */
 			case 0x24: {
-				spy_integer addr = spy_pop_int(spy);
-				spy_integer nargs = spy_code_int();
+				spy_int addr = spy_pop_int(spy);
+				spy_int nargs = spy_code_int64();
 				/* save things on stack */
 				spy_push_int(spy, (intptr_t)spy->ip);	/* save ip */
 				spy_push_int(spy, (intptr_t)spy->bp);	/* save bp */
-				spy_push_int(spy, (spy_integer)nargs);  /* save nargs */
+				spy_push_int(spy, (spy_int)nargs);  /* save nargs */
 				spy->bp = spy->sp;
 				spy->ip = &code[addr];
 				break;	
@@ -494,8 +553,8 @@ spy_execute(const char* filename) {
 
 			/* CFCALL (c-func call) */
 			case 0x25: {
-				char* cf_name = (char *)&code[spy_code_int()];
-				spy_integer nargs = spy_code_int();
+				char* cf_name = (char *)&code[spy_code_int64()];
+				spy_int nargs = spy_code_int64();
 				SpyCFunc* cfunc = NULL;
 				for (SpyCFuncList* i = spy->cfuncs; i; i = i->next) {
 					if (!i->cfunc) {
@@ -515,7 +574,7 @@ spy_execute(const char* filename) {
 
 			/* IRET */
 			case 0x26: {
-				spy_integer retval, nargs;
+				spy_int retval, nargs;
 				retval = spy_pop_int(spy);
 				spy->sp = spy->bp;
 				nargs = spy_pop_int(spy);
@@ -532,7 +591,7 @@ spy_execute(const char* filename) {
 
 			/* IDER */
 			case 0x28:
-				spy_push_int(spy, *(spy_integer *)&spy->memory[spy_pop_int(spy)]);
+				spy_push_int(spy, *(spy_int *)&spy->memory[spy_pop_int(spy)]);
 				break;
 
 			/* BDER */
@@ -542,8 +601,8 @@ spy_execute(const char* filename) {
 
 			/* ISAVE */
 			case 0x2A: {
-				spy_integer value = spy_pop_int(spy);
-				spy_integer addr = spy_pop_int(spy);
+				spy_int value = spy_pop_int(spy);
+				spy_int addr = spy_pop_int(spy);
 				spy_save_int(spy, addr, value);	
 				break;
 			}
@@ -551,19 +610,19 @@ spy_execute(const char* filename) {
 			/* BSAVE */
 			case 0x2B: {
 				spy_byte value = spy_pop_byte(spy);
-				spy_integer addr = spy_pop_int(spy);
+				spy_int addr = spy_pop_int(spy);
 				spy_save_byte(spy, addr, value);
 				break;
 			}
 
 			/* RES */
 			case 0x2C:
-				spy->sp += spy_code_int()*8;
+				spy->sp += spy_code_int64()*8;
 				break;
 
 			/* IINC */
 			case 0x2D:
-				spy_push_int(spy, spy_pop_int(spy) + spy_code_int());
+				spy_push_int(spy, spy_pop_int(spy) + spy_code_int64());
 				break;
 
 			/* POP */
@@ -573,23 +632,23 @@ spy_execute(const char* filename) {
 
 			/* IARG */
 			case 0x2F:
-				spy_push_int(spy, *(spy_integer *)&spy->bp[-3*8 - spy_code_int()*8]);
+				spy_push_int(spy, *(spy_int *)&spy->bp[-3*8 - spy_code_int64()*8]);
 				break;
 			
 			/* BARG */
 			case 0x30:
-				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int()*8]);
+				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int64()*8]);
 				break;
 
 			/* LEA */
 			case 0x31:
-				spy_push_int(spy, (spy_integer)(&spy->bp[8 + spy_code_int()*8] - spy->memory));
+				spy_push_int(spy, (spy_int)(&spy->bp[8 + spy_code_int64()*8] - spy->memory));
 				break;
 
 			/* AISAVE (absolute integer save) */
 			case 0x32: {
-				spy_integer value = spy_pop_int(spy);
-				spy_integer addr = spy_code_int();
+				spy_int value = spy_pop_int(spy);
+				spy_int addr = spy_code_int64();
 				spy_save_int(spy, addr, value);	
 				break;
 			}
@@ -597,24 +656,24 @@ spy_execute(const char* filename) {
 			/* ABSAVE */
 			case 0x33: {	
 				spy_byte value = spy_pop_byte(spy);
-				spy_integer addr = spy_code_int();
+				spy_int addr = spy_code_int64();
 				spy_save_byte(spy, addr, value);
 				break;
 			}
 
 			/* AIDER */
 			case 0x34: 
-				spy_push_int(spy, spy_mem_int(spy, spy_code_int()));
+				spy_push_int(spy, spy_mem_int(spy, spy_code_int64()));
 				break;
 
 			/* ABDER */
 			case 0x35:
-				spy_push_byte(spy, spy_mem_int(spy, spy_code_int()));
+				spy_push_byte(spy, spy_mem_int(spy, spy_code_int64()));
 				break;
 			
 			/* MALLOC */
 			case 0x36: {
-				spy_integer requested_bytes = spy_pop_int(spy);
+				spy_int requested_bytes = spy_pop_int(spy);
 				MemoryBlockList* new_list = malloc(sizeof(MemoryBlockList));
 				new_list->next = NULL;
 				new_list->prev = NULL;
@@ -625,8 +684,8 @@ spy_execute(const char* filename) {
 				MemoryBlockList* tail = NULL;
 				int found_slot = 0;
 				for (MemoryBlockList* i = spy->memory_map; i->next; i = i->next) {
-					spy_integer pending_addr = i->block->addr + i->block->bytes;
-					spy_integer delta = i->next->block->addr - pending_addr;
+					spy_int pending_addr = i->block->addr + i->block->bytes;
+					spy_int delta = i->next->block->addr - pending_addr;
 					/* is there enough space to fit the block? */
 					if (new_list->block->bytes <= delta) {
 						/* found enough space: */
@@ -673,7 +732,7 @@ spy_execute(const char* filename) {
 
 			/* VRET */
 			case 0x38: {
-				spy_integer nargs;
+				spy_int nargs;
 				spy->sp = spy->bp;
 				nargs = spy_pop_int(spy);
 				spy->bp = (uint8_t *)spy_pop_int(spy);
@@ -684,25 +743,185 @@ spy_execute(const char* filename) {
 
 			/* ILOCALL */
 			case 0x39:
-				spy_push_int(spy, *(spy_integer *)&spy->bp[8 + spy_code_int()*8]);
+				spy_push_int(spy, *(spy_int *)&spy->bp[8 + spy_code_int64()*8]);
 				break;
 			
 			/* BLOCALL */
 			case 0x3A: 
-				spy_push_byte(spy, spy->bp[8 + spy_code_int()*8]);
+				spy_push_byte(spy, spy->bp[8 + spy_code_int64()*8]);
 				break;
 			
 			/* ILOCALS */
 			case 0x3B:
-				*(spy_integer *)&spy->bp[8 + spy_code_int()*8] = spy_pop_int(spy);
+				*(spy_int *)&spy->bp[8 + spy_code_int64()*8] = spy_pop_int(spy);
 				break;
 
 			/* BLOCALS */
 			case 0x3C:
-				spy->bp[8 + spy_code_int()*8] = spy_pop_byte(spy);
+				spy->bp[8 + spy_code_int64()*8] = spy_pop_byte(spy);
 				break;
 
+			/* PE */
+			case 0x3D:
+				PUSHFLAG(FLAG_EQ);
+				break;
+				
+			/* PNE */
+			case 0x3E:	
+				PUSHNOTFLAG(FLAG_EQ);
+				break;
+
+			/* PGT */
+			case 0x3F:
+				PUSHFLAG(FLAG_GT);
+				break;
+				
+			/* PGE */
+			case 0x40:	
+				PUSHNOTFLAG(FLAG_LT);
+				break;
+
+			/* PLT */
+			case 0x41:
+				PUSHFLAG(FLAG_LT);
+				break;
+				
+			/* PLE */
+			case 0x42:	
+				PUSHNOTFLAG(FLAG_GT);
+				break;
+
+			/* PZ */
+			case 0x43:
+				PUSHFLAG(FLAG_Z);
+				break;
+				
+			/* PNZ */
+			case 0x44:	
+				PUSHNOTFLAG(FLAG_Z);
+				break;
+
+			/* PS */
+			case 0x45:
+				PUSHFLAG(FLAG_S);
+				break;
+
+			/* PNS */
+			case 0x46:
+				PUSHNOTFLAG(FLAG_S);
+				break;
+
+			/* FCONST */
+			case 0x47:
+				spy_push_float(spy, spy_code_float());
+				break;
 			
+			/* FCMP */
+			case 0x48:
+				CMPTYPE(float);
+				break;
+
+			/* FTEST */
+			case 0x49:
+				TESTTYPE(float);
+				break;
+
+			/* FADD */
+			case 0x4A:
+				FLOATARITH(+);
+				break;
+
+			/* FSUB */
+			case 0x4B:
+				FLOATARITH(-);
+				break;
+			
+			/* FMUL */
+			case 0x4C:
+				FLOATARITH(*);
+				break;
+
+			/* FDIV */
+			case 0x4D:
+				FLOATARITH(/);
+				break;
+
+			/* FINC */
+			case 0x4E:
+				spy_push_float(spy, spy_pop_float(spy) + spy_code_float());
+				break;
+
+			/* FRET */
+			case 0x4F: {
+				spy_int nargs;
+				spy_float retval;
+				retval = spy_pop_float(spy);
+				spy->sp = spy->bp;
+				nargs = spy_pop_int(spy);
+				spy->bp = (uint8_t *)spy_pop_int(spy);
+				spy->ip = (uint8_t *)spy_pop_int(spy);
+				spy->sp -= nargs * 8;
+				spy_push_float(spy, retval);
+				break;
+			}
+
+			/* FLOCALL */
+			case 0x50:
+				spy_push_float(spy, *(spy_float *)&spy->bp[8 + spy_code_int64()*8]);
+				break;
+
+			/* FLOCALS */
+			case 0x51:
+				*(spy_float *)&spy->bp[8 + spy_code_int64()*8] = spy_pop_float(spy);
+				break;
+
+			/* AFSAVE */
+			case 0x52: {
+				spy_float value = spy_pop_int(spy);
+				spy_int addr = spy_code_int64();
+				spy_save_float(spy, addr, value);	
+				break;
+			}
+
+			/* AFDER */
+			case 0x53: 
+				spy_push_float(spy, spy_mem_float(spy, spy_code_int64()));
+				break;
+
+			/* FDER */
+			case 0x54:
+				spy_push_float(spy, *(spy_float *)&spy->memory[spy_pop_int(spy)]);
+				break;
+
+			/* FARG */
+			case 0x55:
+				spy_push_float(spy, *(spy_float *)&spy->bp[-3*8 - spy_code_int64()*8]);
+				break;
+
+			/* ITOF */
+			case 0x56:
+				spy_push_float(spy, (spy_float)spy_pop_int(spy));
+				break;
+
+			/* FTOI */
+			case 0x57:
+				spy_push_int(spy, (spy_int)spy_pop_float(spy));
+				break;
+
+			/* ILOG */
+			case 0xFD:
+				printf("%lld\n", spy_pop_int(spy));
+				break;
+
+			/* BLOG */
+			case 0xFE:
+				printf("%d\n", spy_pop_byte(spy));
+				break;
+
+			/* FLOG */
+			case 0xFF:
+				printf("%f\n", spy_pop_float(spy));
+				break;
 		}
 
 	} while (opcode != 0x00);

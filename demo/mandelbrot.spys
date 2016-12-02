@@ -1,0 +1,210 @@
+jmp entry
+
+; C FUNCTIONS BEING USED
+print: db "print\0"
+
+; GLOBALS
+COORD_LEFT:		df -2.0
+COORD_RIGHT:	df 1.0
+COORD_TOP:		df -1.5
+COORD_BOTTOM:	df 1.5
+PIXELS_X:		di 42
+PIXELS_Y:		di 42
+ITERATIONS:		di 100
+
+; maps float n from range [a, b] to range [c, d]
+; args
+; 0: float n
+; 1: float a
+; 2: float b
+; 3: float c
+; 4: float d
+map:
+	; return (n - a)/(b - a)*(d - c) + c
+	farg	0
+	farg	1
+	fsub
+	farg	2
+	farg	1
+	fsub
+	fdiv
+	farg	4
+	farg	3
+	fsub
+	fmul
+	farg	3
+	fadd
+	fret
+
+; no args
+generate_mandelbrot:
+	; stack map		
+	; 0: index i (int)
+	; 1: index j (int)
+	; 2: iter counter (int)
+	; 3: cx (float)
+	; 4: cy (float)
+	; 5: zx (float)
+	; 6: zy (float)
+	; 7: tmp (float)
+	res		8
+
+	; initialize j to 0
+	iconst	0
+	ilocals	0
+
+.onetop:
+	; abort if j >= PIXELS_X
+	ilocall	1
+	aider	PIXELS_X
+	icmp
+	jge		.onebot
+
+	; initialize i to 0
+	iconst	0
+	ilocals	0
+.twotop:
+
+	; abort if i >= PIXELS_Y
+	ilocall	0
+	aider	PIXELS_Y
+	icmp
+	jge		.twobot
+
+	; initialize iter counter to 0	
+	iconst	0
+	ilocals	2
+	
+	; initialize CX to map(i, 0, PIXELS_X, COORD_L, COORD_R);
+	afder	COORD_RIGHT
+	afder	COORD_LEFT
+	aider	PIXELS_X
+	itof
+	fconst	0.0
+	ilocall	0
+	itof
+	call	map, 5
+	ilocals	3
+
+	; initialize CY to map(j, 0, PIXELS_Y, COORD_T, COORD_B);
+	afder	COORD_BOTTOM
+	afder	COORD_TOP
+	aider	PIXELS_Y
+	itof
+	fconst	0.0
+	ilocall	1
+	itof
+	call	map, 5
+	ilocals	4
+
+	; initialize ZX to 0
+	fconst	0.0
+	flocals	5
+
+	; initialize ZY to 0
+	fconst	0.0
+	flocals	6
+.itertop:
+	
+	; break if iter == ITERATIONS
+	ilocall	2
+	aider	ITERATIONS
+	icmp
+	je		.iterbot
+		
+	; break if (zx*zx + zy*zy >= 4.0)
+	flocall	5
+	flocall	5
+	fmul
+	flocall 6
+	flocall 6
+	fmul
+	fadd
+	fconst	4.0
+	fcmp
+	jge		.iterbot
+
+	; store 2*zx*zy in tmp
+	flocall	5
+	flocall	6
+	fconst	2.0
+	fmul
+	fmul
+	flocals	7
+
+	; zx = zx*zx - zy*zy + cx
+	flocall	5
+	flocall	5
+	fmul
+	flocall 6
+	flocall 6
+	fmul
+	fsub
+	flocall	3
+	fadd
+	flocals 5
+
+	; zy = tmp + cy
+	flocall	7
+	flocall	4
+	fadd
+	flocals	6
+
+	; increment iter counter
+	ilocall	2
+	iinc	1
+	ilocals	2
+	
+	jmp		.itertop
+.iterbot:
+	
+	; print X if iter != ITERATIONS, otherwise empty space
+	ilocall	2
+	aider	ITERATIONS
+	icmp
+	jne		.outx
+.outspace:
+	iconst	.strspace
+	cfcall	print, 1
+	pop
+	jmp		.outdone
+.outx:
+	iconst	.strx
+	cfcall	print, 1
+	pop	
+.outdone:
+		
+	; increment i
+	ilocall	0
+	iinc	1
+	ilocals	0
+
+	jmp		.twotop
+.twobot:
+	
+	; print new line
+	iconst	.newline
+	cfcall	print, 1
+	pop
+
+	; increment j
+	ilocall	1
+	iinc	1
+	ilocals	1
+
+	jmp		.onetop
+.onebot:
+
+	vret
+; static local strings
+.strx: db "X \0"
+.strspace: db "  \0"
+.newline: db "\n\0"
+
+main:
+	call	generate_mandelbrot, 0	
+	vret	
+
+entry:
+	call	main, 0
+	exit

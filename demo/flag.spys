@@ -1,0 +1,24 @@
+jmp entry
+
+is_eq:
+	iarg	0
+	iarg	1
+	icmp
+	pe
+	iret
+
+main:
+	iconst	10
+	iconst	10
+	call	is_eq, 2	
+	iconst	.int
+	cfcall	.print, 2	
+	pop
+	
+	vret
+.print: db "print\0"
+.int: db "%d\n\0"
+
+entry:
+	call	main, 0
+	exit

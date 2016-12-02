@@ -250,7 +250,18 @@ next:
 matches_int:
 	; stack map
 	; 0: parse state
-	iconst	0
+	; 1: char on
+	iarg	0
+	res		1
+	
+	; get char on and save in [1]
+	ilocall	0
+	call	onchar, 1
+	ilocals	1
+
+	; return isdigit([1])
+	ilocall	1
+	call	isdigit, 1
 	iret
 
 matches_float:
@@ -269,7 +280,44 @@ matches_operator:
 	iconst	0
 	iret
 
+; ARGS
+;	0: lex state
 lex_int:
+	; stack map
+	; 0: parse state
+	; 1: contents pointer (this is what we scan with)
+	iarg	0
+	res		1
+
+	; give a pointer to contents, store in [1]
+	ilocall	0
+	ider ; gives contents pointer
+	ilocals	1
+
+; loop and increment [1] until no longer isdigit
+.loop:
+	; still is digit???
+	ilocall	1
+	bder
+	call	isdigit, 1
+	itest
+	jz		.bot
+
+	ilocall	1
+	bder
+	iconst	FORMAT_CHAR
+	cfcall	print, 2
+	pop
+
+	
+	; increment pointer
+	ilocall	1
+	iinc	1
+	ilocals 1
+
+	jmp		.loop
+.bot:
+
 	vret
 
 lex_float:
@@ -372,26 +420,26 @@ lex_main:
 	ilocals	50
 	
 	; if matches/lex statements	
-.int:
+.testint:
 	ilocall	3
 	call	matches_int, 1
 	itest
-	jz		.float
+	jz		.testfloat
 	ilocall	3
 	call	lex_int, 1
 	jmp		.doneswitch
-.float:
+.testfloat:
 	ilocall	3
 	call	matches_float, 1
 	itest
-	jz		.identifier
+	jz		.testid
 	ilocall	3
 	call	lex_float, 1
 	jmp		.doneswitch
-.identifier:
+.testid:
 	ilocall	3
 	call	matches_identifier, 1
-	iotest
+	itest
 	jz		.unknowntok
 	ilocall	3
 	call	lex_identifier, 1

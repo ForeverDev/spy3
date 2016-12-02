@@ -3,10 +3,10 @@
 #include "capi_io.h"
 #include "spylib.h"
 
-static spy_integer 
+static spy_int 
 io_print(SpyState* spy) {
 	spy_string format = spy_gets(spy, spy_pop_int(spy));
-	spy_integer length = 0; /* total characters printed */
+	spy_int length = 0; /* total characters printed */
 	while (*format) {
 		switch (*format) {
 			/* NOTE: escape sequences not handeled here, the assembler already dealt with them */
@@ -19,7 +19,7 @@ io_print(SpyState* spy) {
 						length += printf("%llx", spy_pop_int(spy));
 						break;
 					case 'f':
-						/* TODO implement float format */
+						length += printf("%f", spy_pop_float(spy));
 						break;
 					case 'c':
 						fputc(spy_pop_byte(spy), stdout);
@@ -41,44 +41,44 @@ io_print(SpyState* spy) {
 	return 1;
 }
 
-static spy_integer
+static spy_int
 io_outc(SpyState* spy) {
 	spy_byte c = spy_pop_byte(spy);
 	fputc(c, stdout);
 	return 0;
 }
 
-static spy_integer
+static spy_int
 io_fopen(SpyState* spy) {
 	spy_string fname = spy_gets(spy, spy_pop_int(spy));
 	spy_string mode = spy_gets(spy, spy_pop_int(spy));
 	FILE* fptr = fopen(fname, mode);
-	spy_push_int(spy, (spy_integer)fptr);
+	spy_push_int(spy, (spy_int)fptr);
 	return 1;
 }
 
-static spy_integer
+static spy_int
 io_fseek(SpyState* spy) {
 	int mode;
 	FILE* fptr = (FILE *)spy_pop_int(spy);
-	spy_integer mode_raw = spy_pop_int(spy);
-	spy_integer offset = spy_pop_int(spy);
+	spy_int mode_raw = spy_pop_int(spy);
+	spy_int offset = spy_pop_int(spy);
 	mode = (
 		mode_raw == 1 ? SEEK_SET :
 		mode_raw == 2 ? SEEK_END : SEEK_CUR
 	);
-	spy_push_int(spy, (spy_integer)fseek(fptr, mode, mode)); 
+	spy_push_int(spy, (spy_int)fseek(fptr, mode, mode)); 
 	return 1;
 }
 
-static spy_integer
+static spy_int
 io_ftell(SpyState* spy) {
 	FILE* fptr = (FILE *)spy_pop_int(spy);
-	spy_push_int(spy, (spy_integer)ftell(fptr));
+	spy_push_int(spy, (spy_int)ftell(fptr));
 	return 1;
 }
 
-static spy_integer
+static spy_int
 io_fgetc(SpyState* spy) {
 	FILE* fptr = (FILE *)spy_pop_int(spy);
 	spy_push_byte(spy, (spy_byte)fgetc(fptr));
@@ -86,11 +86,11 @@ io_fgetc(SpyState* spy) {
 }
 
 /* NOTE args are (fptr, target, bytes) */
-static spy_integer
+static spy_int
 io_fread(SpyState* spy) {
 	FILE* fptr = (FILE *)spy_pop_int(spy);
-	spy_integer target = spy_pop_int(spy);
-	spy_integer bytes = spy_pop_int(spy);
+	spy_int target = spy_pop_int(spy);
+	spy_int bytes = spy_pop_int(spy);
 	spy_push_int(spy, fread(&spy->memory[target], 1, bytes, fptr));
 	return 1; 
 }
