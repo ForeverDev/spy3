@@ -3,18 +3,18 @@
 
 #include <stdint.h>
 
-typedef struct Token Token;
-typedef struct TokenList TokenList;
+typedef struct AsmToken AsmToken;
+typedef struct AsmTokenList AsmTokenList;
 
-struct Token {
+struct AsmToken {
 	unsigned int line;
-	enum TokenType {
-		TOK_NOTYPE = 0,
-		TOK_INTEGER = 1,
-		TOK_FLOAT = 2,
-		TOK_STRING = 3,
-		TOK_OPERATOR = 4,
-		TOK_IDENTIFIER = 5
+	enum AsmTokenType {
+		ASMTOK_NOTYPE = 0,
+		ASMTOK_INTEGER = 1,
+		ASMTOK_FLOAT = 2,
+		ASMTOK_STRING = 3,
+		ASMTOK_OPERATOR = 4,
+		ASMTOK_IDENTIFIER = 5
 	} type;
 	union {
 		int64_t ival;
@@ -24,14 +24,14 @@ struct Token {
 	};
 };
 
-struct TokenList {
-	Token* token;
-	TokenList* head;
-	TokenList* next;
+struct AsmTokenList {
+	AsmToken* token;
+	AsmTokenList* head;
+	AsmTokenList* next;
 };
 
-TokenList* generate_tokens(const char*);
-void print_tokens(TokenList*);
-int tok_istype(Token*, enum TokenType);
+AsmTokenList* generate_tokens(const char*);
+void print_tokens(AsmTokenList*);
+int tok_istype(AsmToken*, enum AsmTokenType);
 
 #endif

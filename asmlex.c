@@ -11,7 +11,7 @@ struct Lexer {
 	unsigned int current_line;
 	FILE* handle;
 	char* contents;
-	TokenList* tokens;
+	AsmTokenList* tokens;
 };
 
 static void
@@ -26,18 +26,18 @@ lex_die(Lexer* L, const char* msg, ...) {
 }
 
 static void
-append_token(Lexer* L, Token* token) {
+append_token(Lexer* L, AsmToken* token) {
 	/* set line accordingly */
 	token->line = L->current_line;
 	/* if it's the first token, L->tokens->token is null */
 	if (!L->tokens->token) {
 		L->tokens->token = token;
 	} else {
-		TokenList* new = malloc(sizeof(TokenList));
+		AsmTokenList* new = malloc(sizeof(AsmTokenList));
 		new->token = token;
 		new->head = L->tokens;
 		new->next = NULL;
-		TokenList* scanner = L->tokens;
+		AsmTokenList* scanner = L->tokens;
 		while (scanner->next) {
 			scanner = scanner->next;
 		}
@@ -95,7 +95,7 @@ static void
 lex_float(Lexer* L) {
 	char* buf;
 	size_t dist;
-	Token* token;
+	AsmToken* token;
 	char* start;
 	int sign = 1;
 	if (*L->contents == '-') {
@@ -114,8 +114,8 @@ lex_float(Lexer* L) {
 	buf = malloc(dist + 1);
 	memcpy(buf, start, dist);
 	buf[dist] = 0;
-	token = malloc(sizeof(Token));
-	token->type = TOK_FLOAT;
+	token = malloc(sizeof(AsmToken));
+	token->type = ASMTOK_FLOAT;
 	token->fval = strtod(buf, NULL) * sign;
 	append_token(L, token);
 	free(buf);
@@ -125,7 +125,7 @@ static void
 lex_integer(Lexer* L) {
 	char* buf;
 	size_t dist;
-	Token* token;
+	AsmToken* token;
 	char* start;
 	int sign = 1;
 	if (*L->contents == '-') {
@@ -145,8 +145,8 @@ lex_integer(Lexer* L) {
 	buf = malloc(dist + 1);
 	memcpy(buf, start, dist);
 	buf[dist] = 0;
-	token = malloc(sizeof(Token));
-	token->type = TOK_INTEGER;
+	token = malloc(sizeof(AsmToken));
+	token->type = ASMTOK_INTEGER;
 	token->ival = (int64_t)strtoll(buf, NULL, base) * sign;
 	append_token(L, token);
 	free(buf);
@@ -155,10 +155,10 @@ lex_integer(Lexer* L) {
 static void
 lex_character(Lexer* L) {
 	/* starts on ' */
-	Token* token;
+	AsmToken* token;
 	L->contents++;
-	token = malloc(sizeof(Token));
-	token->type = TOK_INTEGER;
+	token = malloc(sizeof(AsmToken));
+	token->type = ASMTOK_INTEGER;
 	token->ival = (int64_t)*L->contents++;
 	if (*L->contents != '\'') {
 		lex_die(L, "expected closing single quote");
@@ -171,7 +171,7 @@ static void
 lex_string(Lexer* L) {
 	char* buf;
 	size_t dist;
-	Token* token;
+	AsmToken* token;
 	char* start;
 	L->contents++; /* skip over opening quote */
 	start = L->contents;
@@ -182,8 +182,8 @@ lex_string(Lexer* L) {
 	buf = malloc(dist + 1);
 	memcpy(buf, start, dist);
 	buf[dist] = 0;
-	token = malloc(sizeof(Token));
-	token->type = TOK_STRING;
+	token = malloc(sizeof(AsmToken));
+	token->type = ASMTOK_STRING;
 	token->sval = buf;
 	append_token(L, token);
 	L->contents++; /* skip closing quote */
@@ -193,7 +193,7 @@ static void
 lex_identifier(Lexer* L) {
 	char* buf;
 	size_t dist;
-	Token* token;
+	AsmToken* token;
 	char* start = L->contents;
 	/* identifiers can start with a '.' (e.g. local label) */
 	if (*L->contents == '.') {
@@ -206,54 +206,54 @@ lex_identifier(Lexer* L) {
 	buf = malloc(dist + 1);
 	memcpy(buf, start, dist);
 	buf[dist] = 0;
-	token = malloc(sizeof(Token));
-	token->type = TOK_IDENTIFIER;
+	token = malloc(sizeof(AsmToken));
+	token->type = ASMTOK_IDENTIFIER;
 	token->sval = buf;
 	append_token(L, token);
 }
 
 static void
 lex_operator(Lexer* L) {
-	Token* token = malloc(sizeof(Token));
-	token->type = TOK_OPERATOR;
+	AsmToken* token = malloc(sizeof(AsmToken));
+	token->type = ASMTOK_OPERATOR;
 	token->oval = *L->contents++;
 	append_token(L, token);
 }
 
 int
-tok_istype(Token* token, enum TokenType type) {
+tok_istype(AsmToken* token, enum AsmTokenType type) {
 	/* token could be NULL... */
 	return token && token->type == type;
 }
 
 void
-print_tokens(TokenList* tokens) {
-	for (TokenList* i = tokens; i && i->token; i = i->next) {
-		Token* t = i->token;
+print_tokens(AsmTokenList* tokens) {
+	for (AsmTokenList* i = tokens; i && i->token; i = i->next) {
+		AsmToken* t = i->token;
 		switch (t->type) {
-			case TOK_NOTYPE:
+			case ASMTOK_NOTYPE:
 				printf("(null)\n");
 				break;
-			case TOK_INTEGER:
+			case ASMTOK_INTEGER:
 				printf("(%lld)\n", t->ival);
 				break;
-			case TOK_FLOAT:
+			case ASMTOK_FLOAT:
 				printf("(%f)\n", t->fval);
 				break;
-			case TOK_STRING:
+			case ASMTOK_STRING:
 				printf("(\"%s\")\n", t->sval);
 				break;
-			case TOK_IDENTIFIER:
+			case ASMTOK_IDENTIFIER:
 				printf("(%s)\n", t->sval);
 				break;
-			case TOK_OPERATOR:
+			case ASMTOK_OPERATOR:
 				printf("(%c)\n", t->oval);
 				break;
 		}
 	}
 }
 
-TokenList*
+AsmTokenList*
 generate_tokens(const char* filename) {
 	
 	Lexer L;
@@ -262,7 +262,7 @@ generate_tokens(const char* filename) {
 	if (!L.handle) {
 		lex_die(&L, "couldn't open file %s for writing", filename);
 	}
-	L.tokens = malloc(sizeof(TokenList));
+	L.tokens = malloc(sizeof(AsmTokenList));
 	L.tokens->token = NULL;
 	L.tokens->head = L.tokens;
 	L.tokens->next = NULL;

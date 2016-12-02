@@ -11,7 +11,7 @@ typedef struct Label Label;
 typedef struct LabelList LabelList;
 
 struct Assembler {
-	TokenList* tokens;
+	AsmTokenList* tokens;
 	LabelList* labels; /* defined on first pass */
 	Label* current_global; /* for accessing nested locals */
 	FILE* handle; /* output handle */
@@ -29,10 +29,10 @@ struct LabelList {
 	LabelList* next;
 };
 
-static enum TokenType
+static enum AsmTokenType
 peektype(Assembler* A) {
 	if (!A->tokens->next) {
-		return TOK_NOTYPE;
+		return ASMTOK_NOTYPE;
 	}
 	return A->tokens->next->token->type;
 }
@@ -123,8 +123,8 @@ get_label(Assembler* A, const char* name) {
 void generate_bytecode(const char* infile, const char* outfile) {
 
 	/* useful token pointers */
-	TokenList* head = NULL;
-	TokenList* code_start = NULL;
+	AsmTokenList* head = NULL;
+	AsmTokenList* code_start = NULL;
 
 	Assembler A;
 	A.inname = infile;
@@ -149,7 +149,7 @@ void generate_bytecode(const char* infile, const char* outfile) {
 	head = A.tokens;
 
 	while (A.tokens) {
-		if (A.tokens->token->type == TOK_IDENTIFIER) {
+		if (A.tokens->token->type == ASMTOK_IDENTIFIER) {
 			const char* on_word = A.tokens->token->sval;
 			/* if on an instruction, increment index by 1 + operand_size */
 			if ((ins = spy_get_instruction(on_word))) {
@@ -185,9 +185,9 @@ void generate_bytecode(const char* infile, const char* outfile) {
 				A.tokens = A.tokens->next;
 			} else if (!strcmp(on_word, "db")) {
 				/* could be a string or single byte.. */
-				if (A.tokens->next->token->type == TOK_INTEGER) {
+				if (A.tokens->next->token->type == ASMTOK_INTEGER) {
 					cindex++;
-				} else if (A.tokens->next->token->type == TOK_STRING) {
+				} else if (A.tokens->next->token->type == ASMTOK_STRING) {
 					const char* str = A.tokens->next->token->sval;
 					size_t len = strlen(str);
 					for (size_t i = 0; i < len; i++) {
@@ -203,11 +203,11 @@ void generate_bytecode(const char* infile, const char* outfile) {
 				}
 				/* operand not important yet */
 				A.tokens = A.tokens->next;
-			} else if (peektype(&A) == TOK_OPERATOR && A.tokens->next->token->oval == ':') {
+			} else if (peektype(&A) == ASMTOK_OPERATOR && A.tokens->next->token->oval == ':') {
 				register_label(&A, on_word, cindex);
 				A.tokens = A.tokens->next; /* skip colon */	
 			}
-		} else if (A.tokens->token->type == TOK_STRING) {
+		} else if (A.tokens->token->type == ASMTOK_STRING) {
 			asm_die(&A, "unexpected string");
 		}
 		if (!A.tokens) {
@@ -219,9 +219,9 @@ void generate_bytecode(const char* infile, const char* outfile) {
 	A.tokens = head; /* time for pass 2 */
 
 	while (A.tokens) {
-		if (A.tokens->token->type == TOK_IDENTIFIER) {
+		if (A.tokens->token->type == ASMTOK_IDENTIFIER) {
 			/* if it's a label definition, skip */
-			if (peektype(&A) == TOK_OPERATOR && A.tokens->next->token->oval == ':') {
+			if (peektype(&A) == ASMTOK_OPERATOR && A.tokens->next->token->oval == ':') {
 				if (A.tokens->token->sval[0] != '.') {
 					A.current_global = get_label(&A, A.tokens->token->sval);
 				}
@@ -238,7 +238,7 @@ void generate_bytecode(const char* infile, const char* outfile) {
 					A.tokens = A.tokens->next;
 					/* expect to be on a comma if it's not the first operand */
 					if (i > 0) {
-						if (!tok_istype(A.tokens->token, TOK_OPERATOR) || A.tokens->token->oval != ',') {
+						if (!tok_istype(A.tokens->token, ASMTOK_OPERATOR) || A.tokens->token->oval != ',') {
 							asm_die(&A, "expected comma");
 						}
 						A.tokens = A.tokens->next; /* eat comma */
@@ -246,10 +246,10 @@ void generate_bytecode(const char* infile, const char* outfile) {
 					switch (op) {
 						case OP_INT64:
 							switch (A.tokens->token->type) {
-								case TOK_INTEGER:
+								case ASMTOK_INTEGER:
 									fwrite(&A.tokens->token->ival, 1, sizeof(int64_t), A.handle);
 									break;
-								case TOK_IDENTIFIER: {
+								case ASMTOK_IDENTIFIER: {
 									/* label needs a memory address */
 									int64_t label = get_label(&A, A.tokens->token->sval)->addr;
 									fwrite(&label, 1, sizeof(int64_t), A.handle);
@@ -261,10 +261,10 @@ void generate_bytecode(const char* infile, const char* outfile) {
 							break;
 						case OP_FLOAT64:
 							switch (A.tokens->token->type) {
-								case TOK_FLOAT:
+								case ASMTOK_FLOAT:
 									fwrite(&A.tokens->token->fval, 1, sizeof(double), A.handle);
 									break;
-								case TOK_IDENTIFIER: {
+								case ASMTOK_IDENTIFIER: {
 									/* label needs a memory address */
 									int64_t label = get_label(&A, A.tokens->token->sval)->addr;
 									fwrite(&label, 1, sizeof(int64_t), A.handle);
@@ -282,21 +282,21 @@ void generate_bytecode(const char* infile, const char* outfile) {
 				}
 			} else if (!strcmp(A.tokens->token->sval, "di")) {
 				A.tokens = A.tokens->next;
-				if (A.tokens->token->type != TOK_INTEGER) {
+				if (A.tokens->token->type != ASMTOK_INTEGER) {
 					asm_die(&A, "expected integer");
 				}
 				fwrite(&A.tokens->token->ival, 1, sizeof(int64_t), A.handle);
 			} else if (!strcmp(A.tokens->token->sval, "df")) {
 				A.tokens = A.tokens->next;
-				if (A.tokens->token->type != TOK_FLOAT) {
+				if (A.tokens->token->type != ASMTOK_FLOAT) {
 					asm_die(&A, "expected float");
 				}
 				fwrite(&A.tokens->token->fval, 1, sizeof(double), A.handle);
 			} else if (!strcmp(A.tokens->token->sval, "db")) {
 				A.tokens = A.tokens->next;
-				if (A.tokens->token->type == TOK_INTEGER) {
+				if (A.tokens->token->type == ASMTOK_INTEGER) {
 					fputc((uint8_t)A.tokens->token->ival, A.handle);
-				} else if (A.tokens->token->type == TOK_STRING) {
+				} else if (A.tokens->token->type == ASMTOK_STRING) {
 					const char* str = A.tokens->token->sval;
 					size_t len = strlen(str);
 					for (size_t i = 0; i < len; i++) {
