@@ -31,7 +31,6 @@ struct AsmTokenList {
 };
 
 AsmTokenList* generate_tokens(const char*);
-void print_tokens(AsmTokenList*);
 int tok_istype(AsmToken*, enum AsmTokenType);
 
 #endif

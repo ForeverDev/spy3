@@ -8,8 +8,8 @@ COORD_LEFT:		df -2.0
 COORD_RIGHT:	df 1.0
 COORD_TOP:		df -1.5
 COORD_BOTTOM:	df 1.5
-PIXELS_X:		di 58
-PIXELS_Y:		di 58
+PIXELS_X:		di 42
+PIXELS_Y:		di 42
 ITERATIONS:		di 100
 
 ; maps float n from range [a, b] to range [c, d]

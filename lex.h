@@ -3,14 +3,15 @@
 #ifndef LEX_H
 #define LEX_H
 
-#include "spy_type.h"
+#include "spy_types.h"
 
 typedef struct Token Token;
 typedef struct TokenList TokenList;
+typedef enum TokenType TokenType;
 
 /* special operator cases.. for non special code is regular ascii */
 #define SPEC_EQ				1  /* == */
-#define SPEC_NE				2  /* != */
+#define SPEC_NEQ			2  /* != */
 #define SPEC_UNARY_MINUS	3
 #define SPEC_UNARY_PLUS		4
 #define SPEC_INC_ONE		5  /* ++ */
@@ -28,18 +29,20 @@ typedef struct TokenList TokenList;
 #define SPEC_SHL			17 /* << */
 #define SPEC_SHR			18 /* >> */
 
+enum TokenType {
+	TOK_NOTOK = 0,
+	TOK_INTEGER = 1,
+	TOK_FLOAT = 2,
+	TOK_STRING = 3,
+	TOK_IDENTIFIER = 4,
+	TOK_OPERATOR = 5
+};
+
 struct Token {
 	unsigned int line;
-	enum {
-		TOK_NOTOK = 0,
-		TOK_INTEGER = 1,
-		TOK_FLOAT = 2,
-		TOK_STRING = 3,
-		TOK_IDENTIFIER = 4,
-		TOK_OPERATOR = 5
-	} type;
+	TokenType type;
 	union {
-		spy_integer ival;
+		spy_int ival;
 		spy_float fval;
 		char oval;
 		char* sval; /* identifier and string */
@@ -50,8 +53,9 @@ struct TokenList {
 	Token* token;
 	TokenList* next;
 	TokenList* prev;
-}:
+};
 
 TokenList* generate_tokens_from_source(const char*);
+void print_tokens(TokenList*);
 
 #endif

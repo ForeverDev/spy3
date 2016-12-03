@@ -226,33 +226,6 @@ tok_istype(AsmToken* token, enum AsmTokenType type) {
 	return token && token->type == type;
 }
 
-void
-print_tokens(AsmTokenList* tokens) {
-	for (AsmTokenList* i = tokens; i && i->token; i = i->next) {
-		AsmToken* t = i->token;
-		switch (t->type) {
-			case ASMTOK_NOTYPE:
-				printf("(null)\n");
-				break;
-			case ASMTOK_INTEGER:
-				printf("(%lld)\n", t->ival);
-				break;
-			case ASMTOK_FLOAT:
-				printf("(%f)\n", t->fval);
-				break;
-			case ASMTOK_STRING:
-				printf("(\"%s\")\n", t->sval);
-				break;
-			case ASMTOK_IDENTIFIER:
-				printf("(%s)\n", t->sval);
-				break;
-			case ASMTOK_OPERATOR:
-				printf("(%c)\n", t->oval);
-				break;
-		}
-	}
-}
-
 AsmTokenList*
 generate_tokens(const char* filename) {
 	

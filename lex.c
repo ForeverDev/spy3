@@ -6,18 +6,46 @@
 #include "lex.h"
 
 typedef struct LexState LexState;
+typedef struct TokenListing TokenListing;
 
 struct LexState {
 	TokenList* tokens;
-	char* source;
+	char* contents;
 	unsigned int current_line;
+};
+
+struct TokenListing {
+	const char* word;
+	char code;
+};
+
+/* NOTE this only lists special cases... regular cases
+ * get their ascii code assigned */
+static const TokenListing token_listing[] = {
+	{"==", SPEC_EQ},
+	{"!=", SPEC_NEQ},
+	{"++", SPEC_INC_ONE},
+	{"--", SPEC_DEC_ONE},
+	{"+=", SPEC_INC_BY},
+	{"-=", SPEC_DEC_BY},
+	{"*=", SPEC_MUL_BY},
+	{"/=", SPEC_DIV_BY},
+	{"%=", SPEC_MOD_BY},
+	{"<<=", SPEC_SHL_BY},
+	{">>=", SPEC_SHR_BY},
+	{"&=", SPEC_AND_BY},
+	{"|=", SPEC_OR_BY},
+	{"^=", SPEC_XOR_BY},
+	{"<<", SPEC_SHL},
+	{">>", SPEC_SHR},
+	{NULL, 0}
 };
 
 static void 
 lex_die(LexState* L, const char* message, ...) {
 	va_list args;
 	va_start(args, message);
-	printf("** SPYRE LEX ERROR **\n\tmessage: ");
+	printf("\n\n** SPYRE LEX ERROR **\n\tmessage: ");
 	vprintf(message, args);
 	printf("\n\tline: %d\n\n\n", L->current_line);
 	va_end(args);
@@ -26,6 +54,7 @@ lex_die(LexState* L, const char* message, ...) {
 
 static void
 append_token(LexState* L, Token* token) {
+	token->line = L->current_line;
 	if (!L->tokens->token) {
 		L->tokens->token = token;
 	} else {
@@ -62,7 +91,7 @@ on_float(LexState* L) {
 		return 0;
 	};
 	scan++;
-	if (!isdigit(scan)) {
+	if (!isdigit(*scan)) {
 		lex_die(L, "expected digits after '.'");
 	}
 	return 1;
@@ -87,25 +116,121 @@ on_operator(LexState* L) {
 
 static void
 lex_float(LexState* L) {
-	
+	Token* tok;
+	char* buf;
+	char* start;
+	size_t len = 0;
+	start = L->contents;
+	while (isdigit(*L->contents)) {
+		L->contents++;
+		len++;
+	}
+	L->contents++; /* skip '.' */
+	len++;
+	while (isdigit(*L->contents)) {
+		L->contents++;
+		len++;
+	}	
+	buf = malloc(len + 1);
+	memcpy(buf, start, len);
+	buf[len] = 0;
+	tok = malloc(sizeof(Token));
+	tok->type = TOK_FLOAT;
+	tok->fval = (spy_float)strtod(buf, NULL);
+	append_token(L, tok);
+	free(buf);
 }
 
 static void
 lex_int(LexState* L) {
+	Token* tok;
+	char* buf;
+	char* start;
+	size_t len = 0;
 	int base = (*L->contents == '0' && L->contents[1] == 'x') ? 16 : 10;
 	if (base == 16) {
 		L->contents += 2;
 	}
+	start = L->contents;
+	while (isdigit(*L->contents)) {
+		len++;
+		L->contents++;
+	}
+	buf = malloc(len + 1);
+	memcpy(buf, start, len);
+	buf[len] = 0;
+	tok = malloc(sizeof(Token));
+	tok->type = TOK_INTEGER;
+	tok->ival = (spy_int)strtoll(buf, NULL, base);
+	free(buf);
+	append_token(L, tok);
 }
 
 static void
 lex_identifier(LexState* L) {
-
+	Token* tok;
+	char* buf;
+	char* start;
+	size_t len = 0;
+	start = L->contents;
+	while (isalnum(*L->contents) || *L->contents == '_') {
+		len++;
+		L->contents++;
+	}
+	buf = malloc(len + 1);
+	memcpy(buf, start, len);
+	buf[len] = 0;
+	tok = malloc(sizeof(Token));
+	tok->type = TOK_IDENTIFIER;
+	tok->sval = buf;
+	append_token(L, tok);
 }
 
 static void
 lex_operator(LexState* L) {
+	Token* tok;
+	char ctype;
+	char* start = L->contents;
+	const TokenListing* found = NULL;
+	for (const TokenListing* i = token_listing; i->word; i++) {
+		if (!strncmp(L->contents, i->word, strlen(i->word))) {
+			found = i;
+			L->contents += strlen(i->word);
+			break;
+		}
+	}
+	tok = malloc(sizeof(Token));
+	tok->type = TOK_OPERATOR;
+	if (found) {
+		tok->oval = found->code;
+	} else {
+		tok->oval = *L->contents++;
+	}
+	append_token(L, tok);
+}
 
+void
+print_tokens(TokenList* list) {
+	for (TokenList* i = list; i; i = i->next) {
+		if (!i->token) break;
+		switch (i->token->type) {
+			case TOK_INTEGER:
+				printf("(%lld)\n", i->token->ival);
+				break;
+			case TOK_FLOAT:
+				printf("(%f)\n", i->token->fval);
+				break;
+			case TOK_IDENTIFIER:
+				printf("(%s)\n", i->token->sval);
+				break;
+			case TOK_STRING:
+				printf("(\"%s\")\n", i->token->sval);
+				break;
+			case TOK_OPERATOR:
+				printf("(OP %d)\n", i->token->oval);
+				break;
+		}
+	}
 }
 
 TokenList*
@@ -113,7 +238,7 @@ generate_tokens_from_source(const char* filename) {
 	
 	LexState L;
 	L.current_line = 1;
-	L.source = NULL;
+	L.contents = NULL;
 	L.tokens = malloc(sizeof(TokenList));
 	L.tokens->token = NULL;
 	L.tokens->next = NULL;
@@ -121,6 +246,7 @@ generate_tokens_from_source(const char* filename) {
 		
 	FILE* handle;
 	unsigned long long flen;
+	char* start; /* used to free later */
 	
 	handle = fopen(filename, "rb");
 	if (!handle) {
@@ -129,11 +255,20 @@ generate_tokens_from_source(const char* filename) {
 	fseek(handle, 0, SEEK_END);
 	flen = ftell(handle);
 	rewind(handle);
-	L.source = malloc(flen + 1);
-	fread(L.source, 1, flen, handle);
+	start = L.contents = malloc(flen + 1);
+	fread(L.contents, 1, flen, handle);
+	L.contents[flen] = 0;
 	fclose(handle);
 
-	while (*L.source) {
+	while (*L.contents) {
+		if (*L.contents == '\n') {
+			L.current_line++;
+			L.contents++;
+			continue;
+		} else if (*L.contents == ' ' || *L.contents == '\t') {
+			L.contents++;
+			continue;
+		}
 		if (on_float(&L)) {
 			lex_float(&L);
 		} else if (on_int(&L)) {
@@ -143,11 +278,13 @@ generate_tokens_from_source(const char* filename) {
 		} else if (on_operator(&L)) {
 			lex_operator(&L);
 		} else {
-			lex_die(&L, "unknown token '%c'", *L.source);
+			lex_die(&L, "unknown token '%c'", *L.contents);
 		}
 	}
 
-	free(L.source);
+	print_tokens(L.tokens);
+
+	free(start);
 	return L.tokens;
 
 }

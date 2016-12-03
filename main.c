@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "vm.h"
+#include "lex.h"
 #include "assemble.h"
 
 int main(int argc, char** argv) {
@@ -16,7 +17,7 @@ int main(int argc, char** argv) {
 	char* fasm;
 	char* fbin;
 	size_t slen = strlen(fname);
-
+	
 	fasm = malloc(slen + 6);
 	strcpy(fasm, fname);
 	strcat(fasm, ".spys");
@@ -24,10 +25,14 @@ int main(int argc, char** argv) {
 	fbin = malloc(slen + 6);
 	strcpy(fbin, fname);
 	strcat(fbin, ".spyb");
-	
+
+	/*	
 	generate_bytecode(fasm, fbin);
 	spy_init();
 	spy_execute(fbin);
+	*/
+
+	generate_tokens_from_source(argv[1]);
 
 	return 0;
 

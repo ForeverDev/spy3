@@ -336,8 +336,8 @@ spy_execute(const char* filename) {
 	#define PUSHFLAG(flag) spy_push_int(spy, (spy->flags & (flag)) != 0)
 	
 	#define PUSHNOTFLAG(flag) spy_push_int(spy, !(spy->flags & (flag)))
-			
-
+	
+	uint64_t instructions = 0;			
 
 	/* go */
 	do {
@@ -348,6 +348,7 @@ spy_execute(const char* filename) {
 		}
 
 		opcode = spy_code_int8();
+		instructions++;
 
 		switch (opcode) {
 			/* NOP */
@@ -587,6 +588,7 @@ spy_execute(const char* filename) {
 
 			/* EXIT */
 			case 0x27:
+				printf("INSTRUCTIONS EXECUTED: %llu\n", instructions);
 				return;
 
 			/* IDER */
@@ -925,5 +927,4 @@ spy_execute(const char* filename) {
 		}
 
 	} while (opcode != 0x00);
-
 }
