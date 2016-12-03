@@ -62,12 +62,18 @@ struct TreeBlock {
 	TreeNode* child;
 };
 
+struct TreeIf {
+	ExpNode* condition;
+	TreeNode* child;	
+};
+
 struct TreeNode {
 	TreeNode* parent;
 	TreeNode* next;
 	TreeNodeType type;
 	union {
 		TreeBlock* blockval;	
+		TreeIf* ifval;
 	};
 };
 

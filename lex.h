@@ -10,6 +10,7 @@ typedef struct TokenList TokenList;
 typedef enum TokenType TokenType;
 
 /* special operator cases.. for non special code is regular ascii */
+#define SPEC_NULL			0
 #define SPEC_EQ				1  /* == */
 #define SPEC_NEQ			2  /* != */
 #define SPEC_UNARY_MINUS	3
