@@ -231,26 +231,31 @@ tokcode_tostring(char code) {
 }
 
 void
+print_token(Token* t) {
+	switch (t->type) {
+		case TOK_INTEGER:
+			printf("(%lld)\n", t->ival);
+			break;
+		case TOK_FLOAT:
+			printf("(%f)\n", t->fval);
+			break;
+		case TOK_IDENTIFIER:
+			printf("(%s)\n", t->sval);
+			break;
+		case TOK_STRING:
+			printf("(\"%s\")\n", t->sval);
+			break;
+		case TOK_OPERATOR:
+			printf("(OP %d)\n", t->oval);
+			break;
+	}
+}
+
+void
 print_tokens(TokenList* list) {
 	for (TokenList* i = list; i; i = i->next) {
 		if (!i->token) break;
-		switch (i->token->type) {
-			case TOK_INTEGER:
-				printf("(%lld)\n", i->token->ival);
-				break;
-			case TOK_FLOAT:
-				printf("(%f)\n", i->token->fval);
-				break;
-			case TOK_IDENTIFIER:
-				printf("(%s)\n", i->token->sval);
-				break;
-			case TOK_STRING:
-				printf("(\"%s\")\n", i->token->sval);
-				break;
-			case TOK_OPERATOR:
-				printf("(OP %d)\n", i->token->oval);
-				break;
-		}
+		print_token(i->token);
 	}
 }
 

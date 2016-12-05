@@ -13,6 +13,7 @@ typedef struct TreeBreak TreeBreak;
 typedef struct TreeContinue TreeContinue;
 typedef struct TreeReturn TreeReturn;
 typedef struct TreeBlock TreeBlock;
+typedef struct TreeStatement TreeStatement;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -77,13 +78,19 @@ struct TreeIf {
 	TreeNode* child;	
 };
 
+struct TreeStatement {
+	ExpNode* exp;
+};
+
 struct TreeNode {
 	TreeNode* parent;
 	TreeNode* next;
+	TreeNode* prev;
 	TreeNodeType type;
 	union {
 		TreeBlock* blockval;	
 		TreeIf* ifval;
+		TreeStatement* stateval;
 	};
 };
 

@@ -37,12 +37,19 @@ struct OpEntry {
 
 /* parse functions */
 static void parse_if(ParseState*);
+static void parse_block(ParseState*);
+static void parse_statement(ParseState*);
 static ExpNode* parse_expression(ParseState*);
+static void jump_out(ParseState*);
 
 /* exp stack functions */
 static void expstack_push(ExpStack**, ExpNode*);
 static ExpNode* expstack_pop(ExpStack**);
 static ExpNode* expstack_top(ExpStack**);
+
+/* token functions */
+static int on_ident(ParseState* P, const char*);
+static int on_op(ParseState* P, char);
 
 /* misc */
 static void print_expression(ExpNode*, int);
@@ -104,14 +111,23 @@ mark_operator(ParseState* P, char inc, char dec) {
 	TokenList* i;
 	
 	for (i = P->tokens; i && count > 0; i = i->next) {
-		if (i->token->type != TOK_OPERATOR) {
+		Token* at = i->token;
+		if (at->type != TOK_OPERATOR) {
 			continue;
 		}
-		if (i->token->oval == inc) {
+		if (at->type == TOK_IDENTIFIER && is_keyword(at->sval)) {
+			parse_die(P, "unexpected keyword '%s' in expression", at->sval);
+		}
+		if (at->oval == inc) {
 			count++;
-		} else if (i->token->oval == dec) {
+		} else if (at->oval == dec) {
 			count--;
 		}
+		if (count == 0) break;
+	}
+
+	if (!i) {
+		parse_die(P, "unexpected EOF while parsing expression");
 	}
 
 	P->marked = i;	
@@ -170,19 +186,104 @@ expstack_top(ExpStack** stack) {
 	return scan->node;
 }
 
+static int
+on_ident(ParseState* P, const char* word) {
+	return P->tokens->token->type == TOK_IDENTIFIER && !strcmp(P->tokens->token->sval, word);
+}
+
+static int
+on_op(ParseState* P, char op) {
+	return P->tokens->token->type == TOK_OPERATOR && P->tokens->token->oval == op;
+}
+
 static void
 append_node(ParseState* P, TreeNode* node) {
-	TreeNode* target = P->append_target ?: P->current_block;
+	node->next = NULL;
+	node->prev = NULL;
 	TreeNode* append_to = NULL;
-	switch (target->type) {
-		case NODE_IF:
-			append_to = target->ifval->child;
-			break;
-				
+	TreeNode* target = P->append_target;
+	if (target) {
+		switch (target->type) {
+			case NODE_IF:
+				target->ifval->child = node;
+				break;
+					
+		}
+		node->parent = target;
+	} else {
+		/* if no target, throw into current block */
+		printf("AYY\n");
+		TreeBlock* block = P->current_block->blockval;
+		if (!block->child) {
+			block->child = node;
+		} else {
+			TreeNode* scan = block->child;
+			while (scan->next) {
+				scan = scan->next;
+			}
+			scan->next = node;
+			node->prev = scan;
+		}
+		node->parent = P->current_block;
+	}
+	/* appendable: function, if, while, for */
+	if (node->type == NODE_IF) {
+		P->append_target = node;
+	} else {
+		P->append_target = NULL;
+	}
+	if (node->type == NODE_BLOCK) {
+		P->current_block = node;
 	}
 }
 
-#define INDENT(n) for(int _=0;_<(n);_++)fputc('\t',stdout)
+/* macro used in print_tree and print_expression */
+#define INDENT(n) for(int _=0;_<(n);_++)printf("  ")
+
+static void
+print_tree(TreeNode* tree, int indent) {
+	if (!tree) {
+		printf("\n");
+		return;
+	};
+	INDENT(indent);
+	switch (tree->type) {
+		case NODE_BLOCK:
+			printf("BLOCK: [\n");
+			for (TreeNode* i = tree->blockval->child; i; i = i->next) {
+				print_tree(i, indent + 1);
+			}
+			INDENT(indent);
+			printf("]\n");
+			break;
+		case NODE_IF:
+			printf("IF: [\n");
+			INDENT(indent + 1);
+			printf("CONDITION: [\n");
+			print_expression(tree->ifval->condition, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("CHILD: [\n");
+			print_tree(tree->ifval->child, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
+		case NODE_STATEMENT:
+			printf("STATEMENT: [\n");
+			INDENT(indent + 1);
+			printf("EXPRESSION: [\n");
+			print_expression(tree->stateval->exp, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
+	}
+}
+
 static void
 print_expression(ExpNode* exp, int indent) {
 	if (!exp) return;
@@ -378,7 +479,6 @@ parse_expression(ParseState* P) {
 	P->tokens = P->focus;
 
 	ExpNode* ret = expstack_pop(&tree);
-	print_expression(ret, 0);
 	
 	if (tree != NULL) {
 		parse_die(P, "an expression must not have more than one result");
@@ -386,6 +486,43 @@ parse_expression(ParseState* P) {
 
 	return ret;
 
+}
+
+static void
+jump_out(ParseState* P) {
+	/* skip } */
+	P->tokens = P->tokens->next;
+	do {
+		P->current_block = P->current_block->parent;
+	} while (P->current_block->type != NODE_BLOCK);
+}
+
+static void
+parse_block(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_BLOCK;
+	node->blockval = malloc(sizeof(TreeBlock));
+	node->blockval->child = NULL;
+
+	/* skip over { */
+	P->tokens = P->tokens->next;
+
+	append_node(P, node);
+}
+
+static void
+parse_statement(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_STATEMENT;
+	node->stateval = malloc(sizeof(TreeStatement));
+	
+	/* starts on first token of expression... parse it */
+	print_token(P->tokens->token);
+	mark_operator(P, SPEC_NULL, ';');
+	node->stateval->exp = parse_expression(P);
+	P->tokens = P->tokens->next; /* skip ; */
+
+	append_node(P, node);
 }
 
 static void 
@@ -402,6 +539,10 @@ parse_if(ParseState* P) {
 	node->ifval->condition = parse_expression(P);
 	P->tokens = P->tokens->next; /* skip ')' */
 
+	printf("%p\n", P->current_block);
+
+	append_node(P, node);
+
 }
 
 TreeNode*
@@ -415,16 +556,26 @@ generate_syntax_tree(TokenList* tokens) {
 	P.root_node->blockval = malloc(sizeof(TreeBlock));
 	P.root_node->blockval->child = NULL;
 	P.current_block = P.root_node;
-	P.append_target = P.current_block;
+	P.append_target = NULL;
 
 	while (P.tokens) {
-		if (P.tokens->token->type == TOK_IDENTIFIER) {
-			const char* onword = P.tokens->token->sval;
-			if (!strcmp(onword, "if")) {
-				parse_if(&P);
-			}	
+		if (on_ident(&P, "if")) {
+			parse_if(&P);
+		} else if (on_op(&P, '{')) {
+			parse_block(&P);
+		} else if (on_op(&P, '}')) {
+			if (P.current_block == P.root_node) {
+				parse_die(&P, "token '}' doesn't close anything");
+			}
+			jump_out(&P);
 		} else {
-			P.tokens = P.tokens->next;
+			parse_statement(&P);
 		}
 	}
+
+	print_tree(P.root_node, 0);
+
+	/* TODO cleanup tokens + other stuff */
+
+	return P.root_node;
 }
