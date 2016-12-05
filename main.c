@@ -4,6 +4,7 @@
 #include <string.h>
 #include "vm.h"
 #include "lex.h"
+#include "parse.h"
 #include "assemble.h"
 
 int main(int argc, char** argv) {
@@ -32,7 +33,8 @@ int main(int argc, char** argv) {
 	spy_execute(fbin);
 	*/
 
-	generate_tokens_from_source(argv[1]);
+	TokenList* tokens = generate_tokens_from_source(argv[1]);
+	generate_syntax_tree(tokens);
 
 	return 0;
 

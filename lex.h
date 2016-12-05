@@ -9,7 +9,7 @@ typedef struct Token Token;
 typedef struct TokenList TokenList;
 typedef enum TokenType TokenType;
 
-/* special operator cases.. for non special code is regular ascii */
+/* special operator cases.. for non-special, code is regular ascii */
 #define SPEC_NULL			0
 #define SPEC_EQ				1  /* == */
 #define SPEC_NEQ			2  /* != */
@@ -29,6 +29,12 @@ typedef enum TokenType TokenType;
 #define SPEC_XOR_BY			16 /* ^= */
 #define SPEC_SHL			17 /* << */
 #define SPEC_SHR			18 /* >> */
+#define SPEC_LOG_AND		19 /* && */
+#define SPEC_LOG_OR			20 /* || */
+#define SPEC_GE				21 /* >= */
+#define SPEC_LE				22 /* <= */
+#define SPEC_TYPENAME		23 /* typename */
+#define SPEC_SIZEOF			24 /* sizeof */
 
 enum TokenType {
 	TOK_NOTOK = 0,
@@ -58,5 +64,6 @@ struct TokenList {
 
 TokenList* generate_tokens_from_source(const char*);
 void print_tokens(TokenList*);
+char* tokcode_tostring(char);
 
 #endif

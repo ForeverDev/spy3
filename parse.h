@@ -2,6 +2,7 @@
 #define PARSE_H
 
 #include "lex.h"
+#include "spy_types.h"
 
 typedef struct TreeNode TreeNode;
 typedef struct TreeIf TreeIf;
@@ -24,7 +25,9 @@ enum ExpNodeType {
 	EXP_NOEXP = 0,
 	EXP_UNARY = 1,
 	EXP_BINARY = 2,
-	EXP_CAST = 3
+	EXP_CAST = 3,
+	EXP_INTEGER = 4, /* literal */
+	EXP_FLOAT = 5 /* literal */
 };
 
 enum TreeNodeType {
@@ -52,9 +55,16 @@ struct UnaryOp {
 
 struct ExpNode {
 	ExpNodeType type;
+	ExpNode* parent;
+	enum {
+		LEAF_LEFT = 1,
+		LEAF_RIGHT = 2
+	} side; /* NOTE only applicable if child of binop */
 	union {
 		BinaryOp* bval;
 		UnaryOp* uval;
+		spy_int ival;
+		spy_float fval;
 	};
 };
 

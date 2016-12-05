@@ -38,6 +38,12 @@ static const TokenListing token_listing[] = {
 	{"^=", SPEC_XOR_BY},
 	{"<<", SPEC_SHL},
 	{">>", SPEC_SHR},
+	{"&&", SPEC_LOG_AND},
+	{"||", SPEC_LOG_OR},
+	{">=", SPEC_GE},
+	{"<=", SPEC_LE},
+	{"typename", SPEC_TYPENAME},
+	{"sizeof", SPEC_SIZEOF},
 	{NULL, 0}
 };
 
@@ -209,6 +215,21 @@ lex_operator(LexState* L) {
 	append_token(L, tok);
 }
 
+char*
+tokcode_tostring(char code) {
+	for (const TokenListing* i = token_listing; i->word; i++) {
+		if (i->code == code) {
+			char* ret = malloc(strlen(i->word) + 1);
+			strcpy(ret, i->word);
+			return ret;
+		}
+	}
+	char* ret = malloc(2);
+	ret[0] = code;
+	ret[1] = 0;
+	return ret;
+}
+
 void
 print_tokens(TokenList* list) {
 	for (TokenList* i = list; i; i = i->next) {
@@ -265,7 +286,7 @@ generate_tokens_from_source(const char* filename) {
 			L.current_line++;
 			L.contents++;
 			continue;
-		} else if (*L.contents == ' ' || *L.contents == '\t') {
+		} else if (*L.contents == ' ' || *L.contents == '\t' || *L.contents == 13) {
 			L.contents++;
 			continue;
 		}
@@ -281,8 +302,6 @@ generate_tokens_from_source(const char* filename) {
 			lex_die(&L, "unknown token '%c'", *L.contents);
 		}
 	}
-
-	print_tokens(L.tokens);
 
 	free(start);
 	return L.tokens;
