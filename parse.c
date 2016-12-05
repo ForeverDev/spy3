@@ -273,11 +273,7 @@ print_tree(TreeNode* tree, int indent) {
 			break;
 		case NODE_STATEMENT:
 			printf("STATEMENT: [\n");
-			INDENT(indent + 1);
-			printf("EXPRESSION: [\n");
-			print_expression(tree->stateval->exp, indent + 2);
-			INDENT(indent + 1);
-			printf("]\n");
+			print_expression(tree->stateval->exp, indent + 1);
 			INDENT(indent);
 			printf("]\n");
 			break;
