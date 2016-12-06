@@ -14,6 +14,8 @@ typedef struct TreeContinue TreeContinue;
 typedef struct TreeReturn TreeReturn;
 typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
+typedef struct TreeWhile TreeWhile;
+typedef struct TreeDatatype TreeDatatype;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -69,6 +71,15 @@ struct ExpNode {
 	};
 };
 
+struct TreeDatatype {
+	enum {
+		DATA_INT = 1,
+		DATA_FLOAT = 2,
+		DATA_BYTE = 3,
+		
+	} type;
+};
+
 struct TreeBlock {
 	TreeNode* child;
 };
@@ -76,6 +87,18 @@ struct TreeBlock {
 struct TreeIf {
 	ExpNode* condition;
 	TreeNode* child;	
+};
+
+struct TreeWhile {
+	ExpNode* condition;
+	TreeNode* child;	
+};
+
+struct TreeFor {
+	ExpNode* init;
+	ExpNode* condition;
+	ExpNode* statement;
+	TreeNode* child;
 };
 
 struct TreeStatement {
@@ -90,6 +113,8 @@ struct TreeNode {
 	union {
 		TreeBlock* blockval;	
 		TreeIf* ifval;
+		TreeFor* forval;
+		TreeWhile* whileval;
 		TreeStatement* stateval;
 	};
 };

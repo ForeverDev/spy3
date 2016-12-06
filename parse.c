@@ -37,6 +37,8 @@ struct OpEntry {
 
 /* parse functions */
 static void parse_if(ParseState*);
+static void parse_while(ParseState*);
+static void parse_for(ParseState*);
 static void parse_block(ParseState*);
 static void parse_statement(ParseState*);
 static ExpNode* parse_expression(ParseState*);
@@ -112,11 +114,11 @@ mark_operator(ParseState* P, char inc, char dec) {
 	
 	for (i = P->tokens; i && count > 0; i = i->next) {
 		Token* at = i->token;
-		if (at->type != TOK_OPERATOR) {
-			continue;
-		}
 		if (at->type == TOK_IDENTIFIER && is_keyword(at->sval)) {
 			parse_die(P, "unexpected keyword '%s' in expression", at->sval);
+		}
+		if (at->type != TOK_OPERATOR) {
+			continue;
 		}
 		if (at->oval == inc) {
 			count++;
@@ -207,12 +209,16 @@ append_node(ParseState* P, TreeNode* node) {
 			case NODE_IF:
 				target->ifval->child = node;
 				break;
-					
+			case NODE_WHILE:
+				target->whileval->child = node;
+				break;
+			case NODE_FOR:
+				target->forval->child = node;
+				break;
 		}
 		node->parent = target;
 	} else {
 		/* if no target, throw into current block */
-		printf("AYY\n");
 		TreeBlock* block = P->current_block->blockval;
 		if (!block->child) {
 			block->child = node;
@@ -227,7 +233,9 @@ append_node(ParseState* P, TreeNode* node) {
 		node->parent = P->current_block;
 	}
 	/* appendable: function, if, while, for */
-	if (node->type == NODE_IF) {
+	if (node->type == NODE_IF
+		|| node->type == NODE_WHILE
+		|| node->type == NODE_FOR) {
 		P->append_target = node;
 	} else {
 		P->append_target = NULL;
@@ -266,6 +274,46 @@ print_tree(TreeNode* tree, int indent) {
 			INDENT(indent + 1);
 			printf("CHILD: [\n");
 			print_tree(tree->ifval->child, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
+		case NODE_WHILE:
+			printf("WHILE: [\n");
+			INDENT(indent + 1);
+			printf("CONDITION: [\n");
+			print_expression(tree->whileval->condition, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("CHILD: [\n");
+			print_tree(tree->whileval->child, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
+		case NODE_FOR:
+			printf("FOR: [\n");
+			INDENT(indent + 1);
+			printf("INITIALIZER: [\n");
+			print_expression(tree->forval->init, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("CONDITION: [\n");
+			print_expression(tree->forval->condition, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("STATEMENT: [\n");
+			print_expression(tree->forval->statement, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("CHILD: [\n");
+			print_tree(tree->forval->child, indent + 2);
 			INDENT(indent + 1);
 			printf("]\n");
 			INDENT(indent);
@@ -531,14 +579,53 @@ parse_if(ParseState* P) {
 	/* starts on token IF */
 	P->tokens = P->tokens->next; /* skip IF */
 	eat_operator(P, '(');
-	mark_operator(P, SPEC_NULL, ')');
+	mark_operator(P, '(', ')');
 	node->ifval->condition = parse_expression(P);
 	P->tokens = P->tokens->next; /* skip ')' */
 
-	printf("%p\n", P->current_block);
+	append_node(P, node);
+
+}
+
+static void 
+parse_while(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_WHILE;
+	node->whileval = malloc(sizeof(TreeWhile));
+	node->whileval->child = NULL;
+
+	/* starts on token WHILE */
+	P->tokens = P->tokens->next; /* skip WHILE */
+	eat_operator(P, '(');
+	mark_operator(P, '(', ')');
+	node->whileval->condition = parse_expression(P);
+	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
 
+}
+
+static void
+parse_for(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_FOR;
+	node->forval = malloc(sizeof(TreeFor));
+	node->forval->child = NULL;
+	
+	/* starts on token FOR */
+	P->tokens = P->tokens->next; /* skip FOR */
+	eat_operator(P, '(');
+	mark_operator(P, SPEC_NULL, ';');
+	node->forval->init = parse_expression(P);
+	P->tokens = P->tokens->next; /* skip ; */
+	mark_operator(P, SPEC_NULL, ';');
+	node->forval->condition = parse_expression(P);
+	P->tokens = P->tokens->next; /* skip ; */
+	mark_operator(P, '(', ')');
+	node->forval->statement = parse_expression(P);
+	P->tokens = P->tokens->next; /* skip ) */
+
+	append_node(P, node);
 }
 
 TreeNode*
@@ -557,6 +644,10 @@ generate_syntax_tree(TokenList* tokens) {
 	while (P.tokens) {
 		if (on_ident(&P, "if")) {
 			parse_if(&P);
+		} else if (on_ident(&P, "while")) {
+			parse_while(&P);
+		} else if (on_ident(&P, "for")) {
+			parse_for(&P);
 		} else if (on_op(&P, '{')) {
 			parse_block(&P);
 		} else if (on_op(&P, '}')) {
@@ -567,6 +658,10 @@ generate_syntax_tree(TokenList* tokens) {
 		} else {
 			parse_statement(&P);
 		}
+	}
+
+	if (P.current_block != P.root_node) {
+		parse_die(&P, "expected '}' before EOF");
 	}
 
 	print_tree(P.root_node, 0);
