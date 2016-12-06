@@ -27,14 +27,14 @@ int main(int argc, char** argv) {
 	strcpy(fbin, fname);
 	strcat(fbin, ".spyb");
 
-	/*	
 	generate_bytecode(fasm, fbin);
 	spy_init();
 	spy_execute(fbin);
-	*/
-
+	
+	/*
 	TokenList* tokens = generate_tokens_from_source(argv[1]);
 	generate_syntax_tree(tokens);
+	*/
 
 	return 0;
 

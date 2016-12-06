@@ -16,6 +16,8 @@ typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
 typedef struct TreeWhile TreeWhile;
 typedef struct TreeDatatype TreeDatatype;
+typedef struct FunctionDescriptor FunctionDescriptor;
+typedef struct StructDescriptor StructDescriptor;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -71,13 +73,40 @@ struct ExpNode {
 	};
 };
 
+struct FunctionDescriptor {
+
+};
+
+struct StructDescriptor {
+
+};
+
 struct TreeDatatype {
 	enum {
 		DATA_INT = 1,
 		DATA_FLOAT = 2,
 		DATA_BYTE = 3,
-		
+		DATA_FPTR = 4,
+		DATA_STRUCT = 5
 	} type;
+
+	/* 0 if not array */
+	unsigned int array_dim;
+
+	/* 0 if not pointer */
+	unsigned int ptr_dim;
+	
+	/* number of bytes needed to store a variable of this type...
+	 * rounded to the nearest multiple of 8 (for stack alignment) */
+	unsigned int size;
+
+	union {
+		/* only applicable if DATA_FPTR */
+		FunctionDescriptor* fdesc;
+
+		/* only applicable if DATA_STRUCT */
+		StructDescriptor* sdesc;
+	};
 };
 
 struct TreeBlock {

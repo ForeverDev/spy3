@@ -291,6 +291,14 @@ generate_tokens_from_source(const char* filename) {
 			L.current_line++;
 			L.contents++;
 			continue;
+		} else if (*L.contents == '/' && L.contents[1] == '*') {
+			L.contents += 2;
+			while (*L.contents != '*' && L.contents[1] != '/') {
+				if (*L.contents == '\n') L.current_line++;
+				L.contents++;
+			}
+			L.contents += 2;
+			continue;
 		} else if (*L.contents == ' ' || *L.contents == '\t' || *L.contents == 13) {
 			L.contents++;
 			continue;

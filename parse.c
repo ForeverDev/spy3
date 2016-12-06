@@ -669,4 +669,6 @@ generate_syntax_tree(TokenList* tokens) {
 	/* TODO cleanup tokens + other stuff */
 
 	return P.root_node;
+
 }
+
