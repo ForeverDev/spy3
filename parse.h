@@ -16,8 +16,11 @@ typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
 typedef struct TreeWhile TreeWhile;
 typedef struct TreeDatatype TreeDatatype;
+typedef struct TreeDatatypeList TreeDatatypeList;
 typedef struct FunctionDescriptor FunctionDescriptor;
 typedef struct StructDescriptor StructDescriptor;
+typedef struct TreeDeclaration TreeDeclaration;
+typedef struct TreeDeclarationList TreeDeclarationList;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -74,7 +77,7 @@ struct ExpNode {
 };
 
 struct FunctionDescriptor {
-
+	
 };
 
 struct StructDescriptor {
@@ -97,7 +100,16 @@ struct TreeDatatype {
 	unsigned int ptr_dim;
 	
 	/* number of bytes needed to store a variable of this type...
-	 * rounded to the nearest multiple of 8 (for stack alignment) */
+	 * NOTE: when the res instructions is used, the number of bytes reserved
+	 * is (sum locals in function) rounded up to nearest multiple of 8 (for stack alignment)
+	 *
+	 * a few constants: 
+	 *   int:	size=8
+	 *   float: size=8
+	 *   byte:  size=1
+	 *   ptr to any type: size=8
+	 *
+	 */ 
 	unsigned int size;
 
 	union {
@@ -109,8 +121,19 @@ struct TreeDatatype {
 	};
 };
 
+struct TreeDeclaration {
+	char* name;
+	TreeDatatype* datatype;
+};
+
+struct TreeDeclarationList {
+	TreeDeclaration* decl;
+	TreeDeclarationList* next;
+};
+
 struct TreeBlock {
 	TreeNode* child;
+	TreeDeclarationList* locals;
 };
 
 struct TreeIf {

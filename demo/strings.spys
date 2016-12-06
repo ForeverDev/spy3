@@ -1,0 +1,34 @@
+jmp entry
+
+print: db "print\0"
+
+main:
+	
+	res		8
+
+	lea		0
+	iinc	0
+	iconst	'a'
+	bsave
+
+	lea		0
+	iinc	1
+	iconst  'b'	
+	bsave
+
+	lea		0
+	iinc	2
+	iconst	0
+	bsave
+
+	lea		0
+	iconst	.format
+	cfcall	print, 2
+	pop
+
+	vret
+.format: db "%s\n\0"
+
+entry:
+	call	main, 0
+	exit
