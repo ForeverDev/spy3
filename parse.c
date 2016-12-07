@@ -41,8 +41,13 @@ static void parse_while(ParseState*);
 static void parse_for(ParseState*);
 static void parse_block(ParseState*);
 static void parse_statement(ParseState*);
+static VarDeclaration* parse_declaration(ParseState*);
 static ExpNode* parse_expression(ParseState*);
 static void jump_out(ParseState*);
+
+/* match functions (to determine if respective parse function should be called) */
+static int matches_declaration(ParseState*);
+static int matches_datatype(ParseState*);
 
 /* exp stack functions */
 static void expstack_push(ExpStack**, ExpNode*);
@@ -50,8 +55,10 @@ static ExpNode* expstack_pop(ExpStack**);
 static ExpNode* expstack_top(ExpStack**);
 
 /* token functions */
-static int on_ident(ParseState* P, const char*);
-static int on_op(ParseState* P, char);
+static int is_ident(ParseState*);
+static int is_op(ParseState*);
+static int on_ident(ParseState*, const char*);
+static int on_op(ParseState*, char);
 
 /* misc */
 static void print_expression(ExpNode*, int);
@@ -189,13 +196,23 @@ expstack_top(ExpStack** stack) {
 }
 
 static int
+is_ident(ParseState* P) {
+	return P->tokens->token->type == TOK_IDENTIFIER;
+}
+
+static int
 on_ident(ParseState* P, const char* word) {
-	return P->tokens->token->type == TOK_IDENTIFIER && !strcmp(P->tokens->token->sval, word);
+	return is_ident(P) && !strcmp(P->tokens->token->sval, word);
+}
+
+static int
+is_op(ParseState* P) {
+	return P->tokens->token->type == TOK_OPERATOR;
 }
 
 static int
 on_op(ParseState* P, char op) {
-	return P->tokens->token->type == TOK_OPERATOR && P->tokens->token->oval == op;
+	return is_op(P) && P->tokens->token->oval == op;
 }
 
 static void
@@ -357,6 +374,33 @@ print_expression(ExpNode* exp, int indent) {
 			printf("%f\n", exp->fval);	
 			break;
 	}
+}
+
+/* helper macro for the matches functions.  requires TokenList
+ * 'start' that points to where matches started */
+#define MATCH_FALSE() P->tokens = start; return 0
+#define MATCH_TRUE() P->tokens = start; return 1
+
+static int
+matches_declaration(ParseState* P) {
+	TokenList* start = P->tokens;
+	if (!is_ident(P)) {
+		MATCH_FALSE();
+	}
+	P->tokens = P->tokens->next;	
+	if (!on_op(P, ':')) {
+		MATCH_FALSE();
+	}
+	P->tokens = P->tokens->next;
+	if (!matches_datatype(P)) {
+		MATCH_FALSE();
+	}
+	MATCH_TRUE();
+}
+
+static int
+matches_datatype(ParseState* P) {
+	return 1;
 }
 
 /* expects end of exprecsion to be marked... NOT inclusive */
@@ -554,6 +598,30 @@ parse_block(ParseState* P) {
 	append_node(P, node);
 }
 
+static Datatype*
+parse_datatype(ParseState* P) {
+	Datatype* data = malloc(sizeof(Datatype));
+
+}
+
+static VarDeclaration*
+parse_declaration(ParseState* P) {
+	VarDeclaration* decl = malloc(sizeof(VarDeclaration));
+
+	/* read identifier */
+	decl->name = malloc(strlen(P->tokens->token->sval) + 1);
+	strcpy(decl->name, P->tokens->token->sval);
+	P->tokens = P->tokens->next;
+
+	/* skip ':' */
+	P->tokens = P->tokens->next;
+
+	/* read datatype */
+	decl->datatype = parse_datatype(P);
+
+	return decl;
+}
+
 static void
 parse_statement(ParseState* P) {
 	TreeNode* node = malloc(sizeof(TreeNode));
@@ -648,6 +716,8 @@ generate_syntax_tree(TokenList* tokens) {
 			parse_while(&P);
 		} else if (on_ident(&P, "for")) {
 			parse_for(&P);
+		} else if (matches_declaration(&P)) {
+			parse_declaration(&P);
 		} else if (on_op(&P, '{')) {
 			parse_block(&P);
 		} else if (on_op(&P, '}')) {

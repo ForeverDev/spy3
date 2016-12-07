@@ -1,4 +1,19 @@
-for (10 * 20; 10 < 100; 100) {
-	if (1);
-	if (2);
+List: struct<T> {
+	value: T;
+	next: List<T>^;
+	prev: List<T>^;
+	head: List<T>^;
+}
+
+List_push: <T>(list: List^, value: T) -> void;
+
+some_function: (int, float) -> void;
+
+main: () -> void {
+
+	/* linked list of function pointers */
+	a: List<(int, float) -> void>;
+
+	List_push(&a, some_function); 
+
 }

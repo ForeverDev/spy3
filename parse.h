@@ -15,12 +15,12 @@ typedef struct TreeReturn TreeReturn;
 typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
 typedef struct TreeWhile TreeWhile;
-typedef struct TreeDatatype TreeDatatype;
-typedef struct TreeDatatypeList TreeDatatypeList;
+typedef struct Datatype Datatype;
+typedef struct DatatypeList DatatypeList;
 typedef struct FunctionDescriptor FunctionDescriptor;
 typedef struct StructDescriptor StructDescriptor;
-typedef struct TreeDeclaration TreeDeclaration;
-typedef struct TreeDeclarationList TreeDeclarationList;
+typedef struct VarDeclaration VarDeclaration;
+typedef struct VarDeclarationList VarDeclarationList;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -77,14 +77,15 @@ struct ExpNode {
 };
 
 struct FunctionDescriptor {
-	
+	VarDeclarationList* arguments;
+	Datatype* return_type;
 };
 
 struct StructDescriptor {
-
+	VarDeclarationList* fields;
 };
 
-struct TreeDatatype {
+struct Datatype {
 	enum {
 		DATA_INT = 1,
 		DATA_FLOAT = 2,
@@ -121,19 +122,19 @@ struct TreeDatatype {
 	};
 };
 
-struct TreeDeclaration {
+struct VarDeclaration {
 	char* name;
-	TreeDatatype* datatype;
+	Datatype* datatype;
 };
 
-struct TreeDeclarationList {
-	TreeDeclaration* decl;
-	TreeDeclarationList* next;
+struct VarDeclarationList {
+	VarDeclaration* decl;
+	VarDeclarationList* next;
 };
 
 struct TreeBlock {
 	TreeNode* child;
-	TreeDeclarationList* locals;
+	VarDeclarationList* locals;
 };
 
 struct TreeIf {
