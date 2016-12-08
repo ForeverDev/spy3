@@ -19,6 +19,7 @@ int main(int argc, char** argv) {
 	char* fbin;
 	size_t slen = strlen(fname);
 	
+	/*	
 	fasm = malloc(slen + 6);
 	strcpy(fasm, fname);
 	strcat(fasm, ".spys");
@@ -30,11 +31,10 @@ int main(int argc, char** argv) {
 	generate_bytecode(fasm, fbin);
 	spy_init();
 	spy_execute(fbin);
+	*/
 	
-	/*
 	TokenList* tokens = generate_tokens_from_source(argv[1]);
 	generate_syntax_tree(tokens);
-	*/
 
 	return 0;
 

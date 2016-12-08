@@ -410,6 +410,8 @@ matches_declaration(ParseState* P) {
 static int
 matches_datatype(ParseState* P) {
 	TokenList* start = P->tokens;
+
+	return 1;
 }
 
 static int
@@ -418,6 +420,8 @@ matches_array(ParseState* P) {
 	if (!on_op(P, '[')) {
 		MATCH_FALSE();
 	}
+	P->token = P->tokens->next;
+	mark_operator(P, '[', ']');
 	MATCH_TRUE();
 }
 
@@ -619,6 +623,8 @@ parse_block(ParseState* P) {
 static Datatype*
 parse_datatype(ParseState* P) {
 	Datatype* data = malloc(sizeof(Datatype));
+
+	return NULL;
 
 }
 

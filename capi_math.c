@@ -23,8 +23,8 @@ math_tan(SpyState* spy) {
 }
 
 static spy_int
-math_acos(SpyState* spy) {
-	spy_push_float(spy, acos(spy_pop_float(spy)));
+math_sqrt(SpyState* spy) {
+	spy_push_float(spy, sqrt(spy_pop_float(spy)));
 	return 1;
 }
 
@@ -33,6 +33,7 @@ SpyCFunc capi_math[] = {
 	{"cos", math_cos},
 	{"sin", math_sin},
 	{"tan", math_tan},
+	{"sqrt", math_sqrt},
 	{NULL, NULL}
 	
 };

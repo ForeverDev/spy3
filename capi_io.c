@@ -95,6 +95,12 @@ io_fread(SpyState* spy) {
 	return 1; 
 }
 
+static spy_int
+io_scan(SpyState* spy) {
+	spy_string format = spy_gets(spy, spy_pop_int(spy));
+	return 0;
+}
+
 SpyCFunc capi_io[] = {
 	{"print", io_print},
 	{"outc", io_outc},
@@ -103,5 +109,6 @@ SpyCFunc capi_io[] = {
 	{"ftell", io_ftell},
 	{"fgetc", io_fgetc},
 	{"fread", io_fread},
+	{"scan", io_scan},
 	{NULL, NULL}
 };
