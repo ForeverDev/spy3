@@ -48,6 +48,8 @@ static void jump_out(ParseState*);
 /* match functions (to determine if respective parse function should be called) */
 static int matches_declaration(ParseState*);
 static int matches_datatype(ParseState*);
+static int matches_array(ParseState*);
+static int matches_pointer(ParseState*);
 
 /* exp stack functions */
 static void expstack_push(ExpStack**, ExpNode*);
@@ -381,6 +383,13 @@ print_expression(ExpNode* exp, int indent) {
 #define MATCH_FALSE() P->tokens = start; return 0
 #define MATCH_TRUE() P->tokens = start; return 1
 
+/* example declarations
+ *
+ * x: int; // integer
+ * x: [10]int; // array of 10 ints
+ * x: [10]^int; // array of 10 int pointers
+ * x: [10](int, float) -> []int; // array of 10 function pointers that take int, float as params and return int array
+ */
 static int
 matches_declaration(ParseState* P) {
 	TokenList* start = P->tokens;
@@ -400,7 +409,16 @@ matches_declaration(ParseState* P) {
 
 static int
 matches_datatype(ParseState* P) {
-	return 1;
+	TokenList* start = P->tokens;
+}
+
+static int
+matches_array(ParseState* P) {
+	TokenList* start = P->token;
+	if (!on_op(P, '[')) {
+		MATCH_FALSE();
+	}
+	MATCH_TRUE();
 }
 
 /* expects end of exprecsion to be marked... NOT inclusive */
