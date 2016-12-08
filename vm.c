@@ -98,6 +98,7 @@ const SpyInstruction spy_instructions[255] = {
 	{"farg", 0x55, {OP_INT64}},				/* [] -> [float value] */
 	{"itof", 0x56, {OP_NONE}},				/* [int value] -> [float value] */
 	{"ftoi", 0x57, {OP_NONE}},				/* [float value] -> [int value] */
+	{"dup", 0x58, {OP_NONE}},				/* [int value] -> [int value, int value] */
 
 	/* debuggers */
 	{"ilog", 0xFD, {OP_NONE}},				
@@ -908,6 +909,11 @@ spy_execute(const char* filename) {
 			/* FTOI */
 			case 0x57:
 				spy_push_int(spy, (spy_int)spy_pop_float(spy));
+				break;
+			
+			/* DUP */
+			case 0x58:
+				spy_push_int(spy, spy_top_int(spy));
 				break;
 
 			/* ILOG */

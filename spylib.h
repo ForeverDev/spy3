@@ -10,6 +10,7 @@ void spy_push_float(SpyState*, spy_float);
 spy_int spy_pop_int(SpyState*);
 spy_byte spy_pop_byte(SpyState*);
 spy_float spy_pop_float(SpyState*);
+spy_int spy_top_int(SpyState*);
 
 spy_int spy_mem_int(SpyState*, spy_int);
 spy_byte spy_mem_byte(SpyState*, spy_int);

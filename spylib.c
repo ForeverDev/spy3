@@ -42,6 +42,11 @@ spy_pop_float(SpyState* spy) {
 	return ret;
 }
 
+spy_int
+spy_top_int(SpyState* spy) {
+	return *(spy_int *)spy->sp;
+}
+
 /* MEMORY FUNCTIONS (LOAD) */
 spy_int
 spy_mem_int(SpyState* spy, spy_int addr) {

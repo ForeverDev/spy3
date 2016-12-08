@@ -414,7 +414,7 @@ matches_datatype(ParseState* P) {
 
 static int
 matches_array(ParseState* P) {
-	TokenList* start = P->token;
+	TokenList* start = P->tokens;
 	if (!on_op(P, '[')) {
 		MATCH_FALSE();
 	}
