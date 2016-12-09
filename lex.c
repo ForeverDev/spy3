@@ -42,6 +42,7 @@ static const TokenListing token_listing[] = {
 	{"||", SPEC_LOG_OR},
 	{">=", SPEC_GE},
 	{"<=", SPEC_LE},
+	{"->", SPEC_ARROW},
 	{"typename", SPEC_TYPENAME},
 	{"sizeof", SPEC_SIZEOF},
 	{NULL, 0}

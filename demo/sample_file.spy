@@ -1,1 +1,1 @@
-test: (int, float) -> void;
+test: (int, float) -> [10]^int;

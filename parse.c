@@ -106,6 +106,7 @@ is_keyword(const char* word) {
 static void
 assert_operator(ParseState* P, char type) {
 	if (!P->tokens || P->tokens->token->type != TOK_OPERATOR || P->tokens->token->oval != type) {
+		print_token(P->tokens->token);
 		parse_die(P, "expected something else lol");	
 	}
 }
@@ -783,8 +784,10 @@ parse_datatype(ParseState* P) {
 	} else {
 		/* not function... primitive type or struct (struct not handeled yet) */
 		if (on_ident(P, "int")) {
+			printf("2\n");
 			data->type = DATA_INT;
 		} else if (on_ident(P, "float")) {
+			printf("3\n");
 			data->type = DATA_FLOAT;
 		} else if (on_ident(P, "byte")) {
 			data->type = DATA_BYTE;
@@ -796,10 +799,7 @@ parse_datatype(ParseState* P) {
 			parse_die(P, "expected typename");
 		}
 	}
-
-	/* note: token points to final token in datatype */
-	print_datatype(data, 0);
-
+	
 	return data;
 
 }
