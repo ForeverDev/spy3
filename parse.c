@@ -67,6 +67,7 @@ static int on_op(ParseState*, char);
 /* misc */
 static void print_expression(ExpNode*, int);
 static void print_tree(TreeNode*, int);
+static void print_datatype(Datatype*, int);
 static void parse_die(ParseState*, const char*, ...);
 static void assert_operator(ParseState*, char);
 static void eat_operator(ParseState*, char);
@@ -380,6 +381,52 @@ print_expression(ExpNode* exp, int indent) {
 	}
 }
 
+static void
+print_datatype(Datatype* data, int indent) {
+	if (!data) return;
+	INDENT(indent);
+	printf("DATATYPE: [\n");
+	INDENT(indent + 1);
+	printf("TYPE NAME: ");
+	switch (data->type) {
+		case DATA_INT:
+			printf("int\n");
+			break;
+		case DATA_FLOAT:
+			printf("float\n");
+			break;	
+		case DATA_BYTE:
+			printf("byte\n");
+			break;
+		case DATA_FPTR:
+			printf("(function pointer)\n");
+			/* print arguments */
+			INDENT(indent + 1);
+			printf("ARGUMENTS: [\n");
+			for (DatatypeList* i = data->fdesc->arguments; i; i = i->next) {
+				print_datatype(i->data, indent + 2);
+			}
+			break;
+		default:
+			printf("(N/A)\n");
+			break;
+	}	
+	INDENT(indent + 1);
+	printf("PTR_DIM: %d\n", data->ptr_dim);
+	INDENT(indent + 1);
+	printf("ARRAY_DIM: %d\n", data->array_dim);
+	INDENT(indent + 1);
+	printf("ARRAY_DIM_SIZE: [\n");
+	for (int i = 0; i < data->array_dim; i++) {
+		INDENT(indent + 2);
+		printf("DIM_%d: %d\n", i, data->array_size[i]);
+	}
+	INDENT(indent + 1);
+	printf("]\n");
+	INDENT(indent);
+	printf("]\n");
+}
+
 /* helper macro for the matches functions.  requires TokenList
  * 'start' that points to where matches started */
 #define MATCH_FALSE() P->tokens = start; return 0
@@ -433,6 +480,10 @@ matches_datatype(ParseState* P) {
 	}
 
 	if (on_op(P, '^')) {
+		MATCH_TRUE();
+	}
+
+	if (on_op(P, '(')) {
 		MATCH_TRUE();
 	}
 
@@ -697,15 +748,16 @@ parse_datatype(ParseState* P) {
 	data->ptr_dim = 0;
 	data->fdesc = NULL;
 	data->sdesc = NULL;
+	data->array_size = NULL;
 	data->type = DATA_NOTYPE;
 	
 	/* is array type */
-	if (on_op(P, '[')) {
-		/* for now, just assume it's an integer inside the brackets (this is bad)...
-		 * the contents between the [] needs to be parsed and determined to be a compile-time
-		 * constant... if not throw an error */
+	/* TODO handle more than one array */
+	while (on_op(P, '[')) {
 		P->tokens = P->tokens->next;
-		data->array_dim = P->tokens->token->ival;
+		data->array_dim++;
+		data->array_size = realloc(data->array_size, data->array_dim * sizeof(unsigned int));
+		data->array_size[data->array_dim - 1] = P->tokens->token->ival;
 		P->tokens = P->tokens->next;
 		P->tokens = P->tokens->next; /* skip closing ] */
 	}
@@ -746,6 +798,7 @@ parse_datatype(ParseState* P) {
 	}
 
 	/* note: token points to final token in datatype */
+	print_datatype(data, 0);
 
 	return data;
 

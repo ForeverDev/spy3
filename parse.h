@@ -97,6 +97,7 @@ struct Datatype {
 
 	/* 0 if not array */
 	unsigned int array_dim;
+	unsigned int* array_size; /* null if !array_dim */
 
 	/* 0 if not pointer */
 	unsigned int ptr_dim;
