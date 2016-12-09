@@ -1,1 +1,1 @@
-test: (int, float) -> [10]^int;
+test: (int, [42]^float) -> [10]^int;

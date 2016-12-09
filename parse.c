@@ -386,7 +386,7 @@ static void
 print_datatype(Datatype* data, int indent) {
 	if (!data) return;
 	INDENT(indent);
-	printf("DATATYPE: [\n");
+	printf("[\n");
 	INDENT(indent + 1);
 	printf("TYPE NAME: ");
 	switch (data->type) {
@@ -407,6 +407,13 @@ print_datatype(Datatype* data, int indent) {
 			for (DatatypeList* i = data->fdesc->arguments; i; i = i->next) {
 				print_datatype(i->data, indent + 2);
 			}
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("RETURN TYPE: [\n");
+			print_datatype(data->fdesc->return_type, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
 			break;
 		default:
 			printf("(N/A)\n");
@@ -416,14 +423,18 @@ print_datatype(Datatype* data, int indent) {
 	printf("PTR_DIM: %d\n", data->ptr_dim);
 	INDENT(indent + 1);
 	printf("ARRAY_DIM: %d\n", data->array_dim);
-	INDENT(indent + 1);
-	printf("ARRAY_DIM_SIZE: [\n");
+	if (data->array_dim > 0) {
+		INDENT(indent + 1);
+		printf("ARRAY_DIM_SIZE: [\n");
+	}
 	for (int i = 0; i < data->array_dim; i++) {
 		INDENT(indent + 2);
 		printf("DIM_%d: %d\n", i, data->array_size[i]);
 	}
-	INDENT(indent + 1);
-	printf("]\n");
+	if (data->array_dim > 0) {
+		INDENT(indent + 1);
+		printf("]\n");
+	}
 	INDENT(indent);
 	printf("]\n");
 }
@@ -917,7 +928,8 @@ generate_syntax_tree(TokenList* tokens) {
 		} else if (on_ident(&P, "for")) {
 			parse_for(&P);
 		} else if (matches_declaration(&P)) {
-			parse_declaration(&P);
+			VarDeclaration* var = parse_declaration(&P);
+			print_datatype(var->datatype, 0);
 		} else if (on_op(&P, '{')) {
 			parse_block(&P);
 		} else if (on_op(&P, '}')) {
