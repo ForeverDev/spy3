@@ -43,6 +43,8 @@ static void parse_block(ParseState*);
 static void parse_statement(ParseState*);
 static VarDeclaration* parse_declaration(ParseState*);
 static ExpNode* parse_expression(ParseState*);
+static FunctionDescriptor* parse_function_descriptor(ParseState*);
+static Datatype* parse_datatype(ParseState*);
 static void jump_out(ParseState*);
 
 /* match functions (to determine if respective parse function should be called) */
@@ -407,22 +409,44 @@ matches_declaration(ParseState* P) {
 	MATCH_TRUE();
 }
 
+/* sample datatypes
+ *
+ * []int
+ * []^int
+ * [](int, ^float) -> void
+ * []<T>(int, ^T) -> void
+ *
+ * int
+ * float
+ *
+ * ^^int
+ * ^float
+ *
+*/
+
 static int
 matches_datatype(ParseState* P) {
 	TokenList* start = P->tokens;
+	
+	if (on_op(P, '[')) {
+		MATCH_TRUE();
+	}
 
-	return 1;
+	if (on_op(P, '^')) {
+		MATCH_TRUE();
+	}
+
+	/* TODO detect defined structs as well */
+	if (on_ident(P, "int") || on_ident(P, "float") || on_ident(P, "byte")) {
+		MATCH_TRUE();
+	}
+	
+	MATCH_FALSE();
 }
 
 static int
 matches_array(ParseState* P) {
-	TokenList* start = P->tokens;
-	if (!on_op(P, '[')) {
-		MATCH_FALSE();
-	}
-	P->token = P->tokens->next;
-	mark_operator(P, '[', ']');
-	MATCH_TRUE();
+	return 0;
 }
 
 /* expects end of exprecsion to be marked... NOT inclusive */
@@ -620,11 +644,110 @@ parse_block(ParseState* P) {
 	append_node(P, node);
 }
 
+static FunctionDescriptor*
+parse_function_descriptor(ParseState* P) {
+	/* expects to start on token ( */
+	/* function descriptor example:
+	 * (int, ^float) -> void
+	 */
+	FunctionDescriptor* fdesc = malloc(sizeof(FunctionDescriptor));
+	fdesc->arguments = NULL;
+	fdesc->return_type = NULL;
+
+	P->tokens = P->tokens->next; /* skip ( */
+	
+	while (!on_op(P, ')')) {
+		Datatype* data = parse_datatype(P);
+		if (!fdesc->arguments) {
+			fdesc->arguments = malloc(sizeof(DatatypeList));
+			fdesc->arguments->data = data;
+			fdesc->arguments->next = NULL;	
+		} else {
+			DatatypeList* scan = fdesc->arguments;
+			while (scan->next) {
+				scan = scan->next;
+			}
+			DatatypeList* new = malloc(sizeof(DatatypeList));
+			new->data = data;
+			new->next = NULL;
+			scan->next = new;
+		}
+		/* should now be on final token of argument... increase by one */
+		P->tokens = P->tokens->next;
+		if (!on_op(P, ')')) {
+			eat_operator(P, ',');
+			if (on_op(P, ')')) {
+				parse_die(P, "expected datatype after ','");
+			}
+		}
+	}
+
+	P->tokens = P->tokens->next; /* skip ) */
+	eat_operator(P, SPEC_ARROW);
+	fdesc->return_type = parse_datatype(P);
+
+	return fdesc;
+	
+}
+
 static Datatype*
 parse_datatype(ParseState* P) {
 	Datatype* data = malloc(sizeof(Datatype));
+	data->array_dim = 0;
+	data->ptr_dim = 0;
+	data->fdesc = NULL;
+	data->sdesc = NULL;
+	data->type = DATA_NOTYPE;
+	
+	/* is array type */
+	if (on_op(P, '[')) {
+		/* for now, just assume it's an integer inside the brackets (this is bad)...
+		 * the contents between the [] needs to be parsed and determined to be a compile-time
+		 * constant... if not throw an error */
+		P->tokens = P->tokens->next;
+		data->array_dim = P->tokens->token->ival;
+		P->tokens = P->tokens->next;
+		P->tokens = P->tokens->next; /* skip closing ] */
+	}
 
-	return NULL;
+	/* is pointer type */
+	while (on_op(P, '^')) {
+		data->ptr_dim++;
+		P->tokens = P->tokens->next;
+	}
+
+	/* now it should be on the typename or function descriptor... e.g.
+	 * int
+	 * () -> void
+	 * <T>() -> void
+	 * etc
+	 */
+	if (on_op(P, '(')) {
+		/* if reached, is function pointer */
+		data->type = DATA_FPTR;	
+
+		/* handy dandy function */
+		data->fdesc = parse_function_descriptor(P);
+	} else {
+		/* not function... primitive type or struct (struct not handeled yet) */
+		if (on_ident(P, "int")) {
+			data->type = DATA_INT;
+		} else if (on_ident(P, "float")) {
+			data->type = DATA_FLOAT;
+		} else if (on_ident(P, "byte")) {
+			data->type = DATA_BYTE;
+		} else {
+			/* TODO handle struct */
+			if (is_ident(P)) {
+				parse_die(P, "unknown typename '%s'", P->tokens->token->sval);
+			}
+			parse_die(P, "expected typename");
+		}
+	}
+
+	/* note: token points to final token in datatype */
+
+	return data;
 
 }
 

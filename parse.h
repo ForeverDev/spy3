@@ -77,7 +77,7 @@ struct ExpNode {
 };
 
 struct FunctionDescriptor {
-	VarDeclarationList* arguments;
+	DatatypeList* arguments;
 	Datatype* return_type;
 };
 
@@ -87,6 +87,7 @@ struct StructDescriptor {
 
 struct Datatype {
 	enum {
+		DATA_NOTYPE = 0,
 		DATA_INT = 1,
 		DATA_FLOAT = 2,
 		DATA_BYTE = 3,
@@ -120,6 +121,11 @@ struct Datatype {
 		/* only applicable if DATA_STRUCT */
 		StructDescriptor* sdesc;
 	};
+};
+
+struct DatatypeList {
+	Datatype* data;
+	DatatypeList* next;
 };
 
 struct VarDeclaration {

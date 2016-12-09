@@ -33,8 +33,9 @@ typedef enum TokenType TokenType;
 #define SPEC_LOG_OR			20 /* || */
 #define SPEC_GE				21 /* >= */
 #define SPEC_LE				22 /* <= */
-#define SPEC_TYPENAME		23 /* typename */
-#define SPEC_SIZEOF			24 /* sizeof */
+#define SPEC_ARROW			23 /* -> */
+#define SPEC_TYPENAME		24 /* typename */
+#define SPEC_SIZEOF			25 /* sizeof */
 
 enum TokenType {
 	TOK_NOTOK = 0,
