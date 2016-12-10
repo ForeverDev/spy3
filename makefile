@@ -1,5 +1,5 @@
 CC = gcc
-CF = -std=c11 -g -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-switch -O3
+CF = -std=c11 -g -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-switch -O0
 OBJ = build/main.o build/vm.o build/asmlex.o build/assemble.o build/spylib.o build/capi_io.o build/capi_load.o build/capi_math.o build/lex.o build/parse.o
 
 all: spy.exe
