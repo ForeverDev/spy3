@@ -15,6 +15,7 @@ typedef struct TreeReturn TreeReturn;
 typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
 typedef struct TreeWhile TreeWhile;
+typedef struct TreeFunction TreeFunction;
 typedef struct Datatype Datatype;
 typedef struct DatatypeList DatatypeList;
 typedef struct FunctionDescriptor FunctionDescriptor;
@@ -35,7 +36,8 @@ enum ExpNodeType {
 	EXP_BINARY = 2,
 	EXP_CAST = 3,
 	EXP_INTEGER = 4, /* literal */
-	EXP_FLOAT = 5 /* literal */
+	EXP_FLOAT = 5, /* literal */
+	EXP_IDENTIFIER
 };
 
 enum TreeNodeType {
@@ -73,6 +75,7 @@ struct ExpNode {
 		UnaryOp* uval;
 		spy_int ival;
 		spy_float fval;
+		char* sval;
 	};
 };
 
@@ -92,7 +95,8 @@ struct Datatype {
 		DATA_FLOAT = 2,
 		DATA_BYTE = 3,
 		DATA_FPTR = 4,
-		DATA_STRUCT = 5
+		DATA_STRUCT = 5,
+		DATA_VOID = 6
 	} type;
 
 	/* 0 if not array */
@@ -165,6 +169,12 @@ struct TreeStatement {
 	ExpNode* exp;
 };
 
+struct TreeFunction {
+	FunctionDescriptor* desc;
+	char* name;
+	TreeNode* child;
+};
+
 struct TreeNode {
 	TreeNode* parent;
 	TreeNode* next;
@@ -176,6 +186,7 @@ struct TreeNode {
 		TreeFor* forval;
 		TreeWhile* whileval;
 		TreeStatement* stateval;
+		TreeFunction* funcval;
 	};
 };
 

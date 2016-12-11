@@ -67,5 +67,6 @@ TokenList* generate_tokens_from_source(const char*);
 void print_tokens(TokenList*);
 void print_token(Token*);
 char* tokcode_tostring(char);
+char* token_tostring(Token*);
 
 #endif

@@ -217,6 +217,36 @@ lex_operator(LexState* L) {
 }
 
 char*
+token_tostring(Token* t) {
+	if (!t) goto unknown;
+	switch (t->type) {
+		case TOK_OPERATOR:
+			return tokcode_tostring(t->oval);
+		case TOK_INTEGER: {
+			char* buf = malloc(64);
+			sprintf(buf, "%d", t->ival);
+			return buf;
+		}
+		case TOK_FLOAT: {
+			char* buf = malloc(64);
+			sprintf(buf, "%f", t->fval);
+			return buf;
+		}
+		case TOK_IDENTIFIER: {
+			char* buf = malloc(strlen(t->sval) + 1);
+			strcpy(buf, t->sval);
+			return buf;
+		}
+	}
+	char* buf;
+	unknown:
+	buf = malloc(2);
+	buf[0] = '?';
+	buf[1] = 0;
+	return buf;
+}
+
+char*
 tokcode_tostring(char code) {
 	for (const TokenListing* i = token_listing; i->word; i++) {
 		if (i->code == code) {

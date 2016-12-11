@@ -15,6 +15,9 @@ struct ParseState {
 	TreeNode* root_node; /* type == NODE_BLOCK */
 	TreeNode* current_block;
 	TreeNode* append_target; /* what to append to */
+	Datatype* type_int;
+	Datatype* type_float;
+	Datatype* type_byte;
 };
 
 struct ExpStack {
@@ -74,6 +77,10 @@ static void eat_operator(ParseState*, char);
 static void mark_operator(ParseState*, char, char);
 static void append_node(ParseState*, TreeNode*);
 static int is_keyword(const char*);
+static void register_local(ParseState*, VarDeclaration*);
+static VarDeclaration* find_local(ParseState*, const char*);
+static const Datatype* typecheck_expression(ParseState*, ExpNode*);
+static int types_match(const Datatype*, const Datatype*);
 
 static void
 parse_die(ParseState* P, const char* message, ...) {
@@ -84,7 +91,7 @@ parse_die(ParseState* P, const char* message, ...) {
 	if (P->tokens) {
 		printf("\n\tline: %d\n", P->tokens->token->line);
 	}
-	printf("\n\n\n");
+	printf("\n\n");
 	va_end(args);
 	exit(1);
 }
@@ -106,8 +113,7 @@ is_keyword(const char* word) {
 static void
 assert_operator(ParseState* P, char type) {
 	if (!P->tokens || P->tokens->token->type != TOK_OPERATOR || P->tokens->token->oval != type) {
-		print_token(P->tokens->token);
-		parse_die(P, "expected something else lol");	
+		parse_die(P, "expected token (%s), got token (%s)", tokcode_tostring(type), token_tostring(P->tokens->token));
 	}
 }
 
@@ -203,7 +209,7 @@ expstack_top(ExpStack** stack) {
 
 static int
 is_ident(ParseState* P) {
-	return P->tokens->token->type == TOK_IDENTIFIER;
+	return P->tokens && P->tokens->token->type == TOK_IDENTIFIER;
 }
 
 static int
@@ -213,7 +219,7 @@ on_ident(ParseState* P, const char* word) {
 
 static int
 is_op(ParseState* P) {
-	return P->tokens->token->type == TOK_OPERATOR;
+	return P->tokens && P->tokens->token->type == TOK_OPERATOR;
 }
 
 static int
@@ -238,6 +244,9 @@ append_node(ParseState* P, TreeNode* node) {
 			case NODE_FOR:
 				target->forval->child = node;
 				break;
+			case NODE_FUNC_IMPL:
+				target->funcval->child = node;
+				break;
 		}
 		node->parent = target;
 	} else {
@@ -258,7 +267,8 @@ append_node(ParseState* P, TreeNode* node) {
 	/* appendable: function, if, while, for */
 	if (node->type == NODE_IF
 		|| node->type == NODE_WHILE
-		|| node->type == NODE_FOR) {
+		|| node->type == NODE_FOR
+		|| node->type == NODE_FUNC_IMPL) {
 		P->append_target = node;
 	} else {
 		P->append_target = NULL;
@@ -342,6 +352,28 @@ print_tree(TreeNode* tree, int indent) {
 			INDENT(indent);
 			printf("]\n");
 			break;
+		case NODE_FUNC_IMPL:	
+			printf("FUNC IMPL: [\n");
+			INDENT(indent + 1);
+			printf("NAME: %s\n", tree->funcval->name);
+			INDENT(indent + 1);
+			printf("ARGUMENTS: [\n");
+			for (DatatypeList* i = tree->funcval->desc->arguments; i; i = i->next) {
+				print_datatype(i->data, indent + 2);
+			}
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("RETURN TYPE: \n");
+			print_datatype(tree->funcval->desc->return_type, indent + 1);
+			INDENT(indent + 1);
+			printf("CHILD: [\n");
+			print_tree(tree->funcval->child, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
 		case NODE_STATEMENT:
 			printf("STATEMENT: [\n");
 			print_expression(tree->stateval->exp, indent + 1);
@@ -379,6 +411,9 @@ print_expression(ExpNode* exp, int indent) {
 		case EXP_FLOAT:
 			printf("%f\n", exp->fval);	
 			break;
+		case EXP_IDENTIFIER:
+			printf("%s\n", exp->sval);
+			break;
 	}
 }
 
@@ -398,6 +433,9 @@ print_datatype(Datatype* data, int indent) {
 			break;	
 		case DATA_BYTE:
 			printf("byte\n");
+			break;
+		case DATA_VOID:
+			printf("void\n");
 			break;
 		case DATA_FPTR:
 			printf("(function pointer)\n");
@@ -512,6 +550,78 @@ matches_array(ParseState* P) {
 	return 0;
 }
 
+static VarDeclaration*
+find_local(ParseState* P, const char* name) {
+	for (TreeNode* i = P->current_block; i; i = i->parent) {
+		if (i->type != NODE_BLOCK) {
+			continue;
+		}
+		for (VarDeclarationList* j = i->blockval->locals; j; j = j->next) {
+			if (!strcmp(j->decl->name, name)) {
+				return j->decl;
+			}
+		}
+	}
+	return NULL;
+}
+
+static void
+register_local(ParseState* P, VarDeclaration* local) {
+	if (P->append_target) {
+		parse_die(P, "variables can only be declared in a block");
+	}
+	TreeBlock* block = P->current_block->blockval;
+	VarDeclarationList* new = malloc(sizeof(VarDeclarationList));
+	new->decl = local;
+	new->next = NULL;
+	if (!block->locals) {
+		block->locals = new;
+	} else {
+		VarDeclarationList* scan = block->locals;
+		while (scan->next) {
+			scan = scan->next;
+		}
+		scan->next = new;
+	}
+}
+
+static int
+types_match(const Datatype* a, const Datatype* b) {
+	if (a->type != b->type) {
+		return 0;
+	}
+	if (a->array_dim != b->array_dim) {
+		return 0;
+	}
+	if (a->ptr_dim != b->ptr_dim) {
+		return 0;
+	}
+	return 1;
+}
+
+static const Datatype*
+typecheck_expression(ParseState* P, ExpNode* exp) {
+	if (!exp) return NULL;
+	switch (exp->type) {
+		case EXP_NOEXP:
+			return NULL;
+		case EXP_INTEGER:
+			return P->type_int;
+		case EXP_FLOAT:
+			return P->type_float;
+		case EXP_UNARY:
+			return typecheck_expression(P, exp->uval->operand);
+		case EXP_BINARY: {
+			const Datatype* left = typecheck_expression(P, exp->bval->left);
+			const Datatype* right = typecheck_expression(P, exp->bval->right);
+			if (!types_match(left, right)) {
+				parse_die(P, "attempt to use operator (%s) on mismatched types", tokcode_tostring(exp->bval->optype));
+			}
+			return left; /* they're both identical, doesn't matter which is returned */
+		}
+	}
+}
+
 /* expects end of exprecsion to be marked... NOT inclusive */
 static ExpNode*
 parse_expression(ParseState* P) {
@@ -610,9 +720,27 @@ parse_expression(ParseState* P) {
 				}
 				expstack_push(&operators, push);
 			} else if (tok->oval == '(') {
-
+				/* we reached here if an open parenthesis was found but
+				 * it is NOT a cast */
+				ExpNode* push = malloc(sizeof(ExpNode));
+				push->type = EXP_UNARY; /* just consider a parenthesis as a unary operator */
+				push->uval = malloc(sizeof(UnaryOp));
+				push->uval->optype = '(';
+				push->uval->operand = NULL;
+				expstack_push(&operators, push);
 			} else if (tok->oval == ')') {
-
+				ExpNode* top;
+				while (1) {
+					top = expstack_top(&operators);
+					if (!top) {
+						parse_die(P, "unexpected parenthesis ')'");
+						break;
+					}
+					/* pop and push until an open parenthesis is reached */
+					if (top->type == EXP_UNARY && top->uval->optype == '(') break;
+					expstack_push(&postfix, expstack_pop(&operators));
+				}
+				expstack_pop(&operators);
 			}
 		} else if (tok->type == TOK_INTEGER) {
 			ExpNode* push = malloc(sizeof(ExpNode));
@@ -625,6 +753,13 @@ parse_expression(ParseState* P) {
 			push->parent = NULL;
 			push->type = EXP_FLOAT;
 			push->fval = tok->fval;
+			expstack_push(&postfix, push);
+		} else if (tok->type == TOK_IDENTIFIER) {
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->parent = NULL;
+			push->type = EXP_IDENTIFIER;
+			push->sval = malloc(strlen(tok->sval) + 1);
+			strcpy(push->sval, tok->sval);
 			expstack_push(&postfix, push);
 		}
 	}
@@ -643,7 +778,7 @@ parse_expression(ParseState* P) {
 
 	for (ExpStack* i = postfix; i; i = i->next) {
 		ExpNode* at = i->node;
-		if (at->type == EXP_INTEGER || at->type == EXP_FLOAT) {
+		if (at->type == EXP_INTEGER || at->type == EXP_FLOAT || at->type == EXP_IDENTIFIER) {
 			/* just a literal? append to tree */
 			expstack_push(&tree, at);	
 		} else if (at->type == EXP_UNARY) {
@@ -786,22 +921,22 @@ parse_datatype(ParseState* P) {
 	 * <T>() -> void
 	 * etc
 	 */
+
 	if (on_op(P, '(')) {
 		/* if reached, is function pointer */
 		data->type = DATA_FPTR;	
 
-		/* handy dandy function */
 		data->fdesc = parse_function_descriptor(P);
 	} else {
 		/* not function... primitive type or struct (struct not handeled yet) */
 		if (on_ident(P, "int")) {
-			printf("2\n");
 			data->type = DATA_INT;
 		} else if (on_ident(P, "float")) {
-			printf("3\n");
 			data->type = DATA_FLOAT;
 		} else if (on_ident(P, "byte")) {
 			data->type = DATA_BYTE;
+		} else if (on_ident(P, "void")) {
+			data->type = DATA_VOID;
 		} else {
 			/* TODO handle struct */
 			if (is_ident(P)) {
@@ -830,6 +965,8 @@ parse_declaration(ParseState* P) {
 	/* read datatype */
 	decl->datatype = parse_datatype(P);
 
+	P->tokens = P->tokens->next;
+
 	return decl;
 }
 
@@ -840,7 +977,6 @@ parse_statement(ParseState* P) {
 	node->stateval = malloc(sizeof(TreeStatement));
 	
 	/* starts on first token of expression... parse it */
-	print_token(P->tokens->token);
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	P->tokens = P->tokens->next; /* skip ; */
@@ -860,6 +996,7 @@ parse_if(ParseState* P) {
 	eat_operator(P, '(');
 	mark_operator(P, '(', ')');
 	node->ifval->condition = parse_expression(P);
+	typecheck_expression(P, node->ifval->condition);
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
@@ -917,10 +1054,23 @@ generate_syntax_tree(TokenList* tokens) {
 	P.root_node->type = NODE_BLOCK;
 	P.root_node->blockval = malloc(sizeof(TreeBlock));
 	P.root_node->blockval->child = NULL;
+	P.root_node->blockval->locals = NULL;
 	P.current_block = P.root_node;
 	P.append_target = NULL;
 
-	while (P.tokens) {
+	P.type_int = calloc(1, sizeof(Datatype));
+	P.type_int->type = DATA_INT;
+	P.type_int->size = 8;
+	
+	P.type_float = calloc(1, sizeof(Datatype));
+	P.type_float->type = DATA_FLOAT;
+	P.type_float->size = 8;
+
+	P.type_byte = calloc(1, sizeof(Datatype));
+	P.type_byte->type = DATA_BYTE;
+	P.type_byte->size = 1;
+
+	while (P.tokens && P.tokens->token) {
 		if (on_ident(&P, "if")) {
 			parse_if(&P);
 		} else if (on_ident(&P, "while")) {
@@ -929,7 +1079,43 @@ generate_syntax_tree(TokenList* tokens) {
 			parse_for(&P);
 		} else if (matches_declaration(&P)) {
 			VarDeclaration* var = parse_declaration(&P);
-			print_datatype(var->datatype, 0);
+			if (var->datatype->type == DATA_FPTR && on_op(&P, '{')) {
+
+				/* make sure it's in global scope */
+				if (P.append_target || P.current_block != P.root_node) {
+					parse_die(&P, "functions must be declared in the global scope");
+				}
+
+				/* if it's an implementation, it can't be array or pointer type */
+				if (var->datatype->array_dim > 0) {
+					parse_die(&P, "can't implement array of functions like that");
+				}
+				if (var->datatype->ptr_dim > 0) {
+					parse_die(&P, "can't implement pointer function like that");
+				}
+
+				/* now that we know it's an implementation, wrap it in
+				 * a node and append it to the tree */
+				TreeNode* node = malloc(sizeof(TreeNode));
+				node->parent = NULL;
+				node->next = NULL;
+				node->prev = NULL;
+				node->type = NODE_FUNC_IMPL;
+				node->funcval = malloc(sizeof(TreeFunction));
+				node->funcval->desc = var->datatype->fdesc;
+				node->funcval->name = var->name;
+				
+				/* no need for declaration anymore, free it.
+				 *
+				 * **NOTE** name and descriptor not freed */	
+				free(var);
+				
+				append_node(&P, node);
+
+			} else {
+				register_local(&P, var);
+				eat_operator(&P, ';');
+			}
 		} else if (on_op(&P, '{')) {
 			parse_block(&P);
 		} else if (on_op(&P, '}')) {
