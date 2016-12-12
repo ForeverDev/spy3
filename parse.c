@@ -477,6 +477,47 @@ print_datatype(Datatype* data, int indent) {
 	printf("]\n");
 }
 
+static char*
+tostring_datatype(const Datatype* data) {
+	char* buf = calloc(1, 1024); /* definitely enough space */
+	for (int i = 0; i < data->array_dim; i++) {
+		strcat(buf, "[]");
+	}
+	for (int i = 0; i < data->ptr_dim; i++) {
+		strcat(buf, "^");
+	}
+	switch (data->type) {
+		case DATA_INT:
+			strcat(buf, "int");
+			break;
+		case DATA_FLOAT:
+			strcat(buf, "float");
+			break;
+		case DATA_BYTE:
+			strcat(buf, "byte");
+			break;
+		case DATA_VOID:
+			strcat(buf, "void");
+			break;
+		case DATA_FPTR:
+			strcat(buf, "(");
+			for (DatatypeList* i = data->fdesc->arguments; i; i = i->next) {
+				char* arg = tostring_datatype(i->data);
+				sprintf(buf + strlen(buf), "%s", arg);
+				free(arg);
+				if (i->next) {
+					strcat(buf, ", ");
+				}
+			}
+			strcat(buf, ") -> ");
+			char* ret = tostring_datatype(data->fdesc->return_type);
+			sprintf(buf + strlen(buf), "%s", ret);
+			free(ret);
+			break;
+	}
+	return buf;
+}
+
 /* helper macro for the matches functions.  requires TokenList
  * 'start' that points to where matches started */
 #define MATCH_FALSE() P->tokens = start; return 0
@@ -611,13 +652,36 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			return P->type_float;
 		case EXP_UNARY:
 			return typecheck_expression(P, exp->uval->operand);
-		case EXP_BINARY: {
-			const Datatype* left = typecheck_expression(P, exp->bval->left);
-			const Datatype* right = typecheck_expression(P, exp->bval->right);
-			if (!types_match(left, right)) {
-				parse_die(P, "attempt to use operator (%s) on mismatched types", tokcode_tostring(exp->bval->optype));
+		case EXP_IDENTIFIER: {
+			/* TODO handle parent being '.' */
+			VarDeclaration* var = find_local(P, exp->sval);
+			if (!var) {
+				parse_die(P, "undeclared identifier '%s'", exp->sval);
 			}
-			return left; /* they're both identical, doesn't matter which is returned */
+			return var->datatype;
+		}
+		case EXP_BINARY: {
+			switch (exp->bval->optype) {
+				case '.': {
+					const Datatype* left = typecheck_expression(P, exp->bval->left);
+					const Datatype* right = typecheck_expression(P, exp->bval->right);
+					/* TODO implement '.' operator.. structs haven't yet been implemented :( */
+					break;
+				}
+				default: {
+					const Datatype* left = typecheck_expression(P, exp->bval->left);
+					const Datatype* right = typecheck_expression(P, exp->bval->right);
+					if (!types_match(left, right)) {
+						parse_die(P, 
+							"attempt to use operator (%s) on mismatched types '%s' and '%s'", 
+							tokcode_tostring(exp->bval->optype),
+							tostring_datatype(left),
+							tostring_datatype(right)
+						);
+					}
+					return left; /* they're both identical, doesn't matter which is returned */
+				}
+			}
 		}
 	}
 }
@@ -673,9 +737,22 @@ parse_expression(ParseState* P) {
 
 	/* first, just use shunting yard to organize the tokens */
 
-	for (P->focus = P->tokens; P->focus != P->marked; P->focus = P->focus->next) {
-		Token* tok = P->focus->token;	
-		if (tok->type == TOK_OPERATOR) {
+	for (; P->tokens != P->marked; P->tokens = P->tokens->next) {
+		Token* tok = P->tokens->token;	
+		Token* prev = NULL;
+		if (P->tokens->prev) {
+			prev = P->tokens->prev->token;
+		}
+		/* function call? */
+		if (prev && prev->type == TOK_IDENTIFIER && tok->type == TOK_OPERATOR && tok->oval == '(') {
+			P->tokens = P->tokens->next; /* advance to identifier */
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->type = EXP_CALL;
+			push->parent = NULL;
+			push->cval = malloc(sizeof(FuncCall));
+			push->cval->fptr = NULL;
+			push->cval->arguments = NULL;
+		} else if (tok->type == TOK_OPERATOR) {
 			/* use assoc to make sure it exists */
 			if (prec[tok->oval].assoc) {
 				ExpNode* top;
@@ -789,7 +866,7 @@ parse_expression(ParseState* P) {
 			operand->parent = at;
 			at->uval->operand = operand;
 			expstack_push(&tree, at);
-		} else if (at->type == EXP_BINARY) {
+		} else if (at->type == EXP_BINARY || at->type == EXP_CALL) {
 			/* pop the leaves off of the stack */
 			ExpNode* leaf[2];
 			for (int j = 0; j < 2; j++) {
@@ -801,14 +878,17 @@ parse_expression(ParseState* P) {
 				leaf[j]->side = j == 1 ? LEAF_LEFT : LEAF_RIGHT;
 			}
 			/* swap order */
-			at->bval->left = leaf[1];
-			at->bval->right = leaf[0];
+			if (at->type == EXP_BINARY) {
+				at->bval->left = leaf[1];
+				at->bval->right = leaf[0];
+			} else {
+				at->cval->fptr = leaf[1];
+				at->cval->arguments = leaf[0];
+			}
 			/* throw the branch back onto the stack */
 			expstack_push(&tree, at);
 		}
 	}
-
-	P->tokens = P->focus;
 
 	ExpNode* ret = expstack_pop(&tree);
 	
@@ -835,6 +915,7 @@ parse_block(ParseState* P) {
 	node->type = NODE_BLOCK;
 	node->blockval = malloc(sizeof(TreeBlock));
 	node->blockval->child = NULL;
+	node->blockval->locals = NULL;
 
 	/* skip over { */
 	P->tokens = P->tokens->next;
@@ -1055,6 +1136,7 @@ generate_syntax_tree(TokenList* tokens) {
 	P.root_node->blockval = malloc(sizeof(TreeBlock));
 	P.root_node->blockval->child = NULL;
 	P.root_node->blockval->locals = NULL;
+	P.root_node->parent = NULL;
 	P.current_block = P.root_node;
 	P.append_target = NULL;
 
@@ -1088,10 +1170,10 @@ generate_syntax_tree(TokenList* tokens) {
 
 				/* if it's an implementation, it can't be array or pointer type */
 				if (var->datatype->array_dim > 0) {
-					parse_die(&P, "can't implement array of functions like that");
+					parse_die(&P, "an array of functions cannot be implemented");
 				}
 				if (var->datatype->ptr_dim > 0) {
-					parse_die(&P, "can't implement pointer function like that");
+					parse_die(&P, "a function pointer cannot be implemented");
 				}
 
 				/* now that we know it's an implementation, wrap it in

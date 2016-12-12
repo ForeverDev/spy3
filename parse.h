@@ -22,6 +22,7 @@ typedef struct FunctionDescriptor FunctionDescriptor;
 typedef struct StructDescriptor StructDescriptor;
 typedef struct VarDeclaration VarDeclaration;
 typedef struct VarDeclarationList VarDeclarationList;
+typedef struct FuncCall FuncCall;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -37,7 +38,8 @@ enum ExpNodeType {
 	EXP_CAST = 3,
 	EXP_INTEGER = 4, /* literal */
 	EXP_FLOAT = 5, /* literal */
-	EXP_IDENTIFIER
+	EXP_IDENTIFIER,
+	EXP_CALL
 };
 
 enum TreeNodeType {
@@ -63,6 +65,12 @@ struct UnaryOp {
 	ExpNode* operand;
 };
 
+struct FuncCall {
+	ExpNode* fptr; /* should evaluate to the address of a function */
+	ExpNode* arguments;
+	int num_args;
+};
+
 struct ExpNode {
 	ExpNodeType type;
 	ExpNode* parent;
@@ -76,6 +84,7 @@ struct ExpNode {
 		spy_int ival;
 		spy_float fval;
 		char* sval;
+		FuncCall* cval;
 	};
 };
 
