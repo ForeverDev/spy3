@@ -16,6 +16,15 @@ static void generate_if(CompileState*);
 /* misc function */
 static int advance(CompileState*);
 static TreeNode* get_child(TreeNode*);
+static void output(CompileState*, const char*, ...);
+
+static void
+output(CompileState* C, const char* format, ...) {
+	va_list list;
+	va_start(list, format);
+	vfprintf(C->handle, format, list);
+	va_end(list);
+}
 
 static TreeNode*
 get_child(TreeNode* node) {
@@ -60,7 +69,7 @@ advance(CompileState* C) {
 
 static void
 generate_if(CompileState* C) {
-
+	output(C, "hello\ngoodbye\n");	
 }
 
 void

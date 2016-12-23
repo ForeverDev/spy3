@@ -12,10 +12,6 @@ struct Sphere {
 
 main: () -> void {
 
-	sphere: Sphere;
-	sphere.position.x = 10.0;
-	sphere.position.y = 20.0;
-	sphere.position.z = 30.0;
-	
+	if (1 == 3);	
 
 }
