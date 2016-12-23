@@ -6,6 +6,7 @@
 #include "lex.h"
 #include "parse.h"
 #include "assemble.h"
+#include "generate.h"
 
 int main(int argc, char** argv) {
 	
@@ -17,24 +18,24 @@ int main(int argc, char** argv) {
 	char* fname = argv[1];
 	char* fasm;
 	char* fbin;
+	char* fspy;
 	size_t slen = strlen(fname);
 	
-	/*	
 	fasm = malloc(slen + 6);
 	strcpy(fasm, fname);
 	strcat(fasm, ".spys");
 
+	fspy = malloc(slen + 5);
+	strcpy(fspy, fname);
+	strcat(fspy, ".spy");
+
 	fbin = malloc(slen + 6);
 	strcpy(fbin, fname);
 	strcat(fbin, ".spyb");
-
-	generate_bytecode(fasm, fbin);
-	spy_init();
-	spy_execute(fbin);
-	*/
 	
-	TokenList* tokens = generate_tokens_from_source(argv[1]);
-	generate_syntax_tree(tokens);
+	TokenList* tokens = generate_tokens_from_source(fspy);
+	ParseState* state = generate_syntax_tree(tokens);
+	generate_instructions(state, fbin);
 
 	return 0;
 

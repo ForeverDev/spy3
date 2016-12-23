@@ -16,6 +16,8 @@ typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
 typedef struct TreeWhile TreeWhile;
 typedef struct TreeFunction TreeFunction;
+typedef struct TreeStruct TreeStruct;
+typedef struct TreeStructList TreeStructList;
 typedef struct Datatype Datatype;
 typedef struct DatatypeList DatatypeList;
 typedef struct FunctionDescriptor FunctionDescriptor;
@@ -23,6 +25,7 @@ typedef struct StructDescriptor StructDescriptor;
 typedef struct VarDeclaration VarDeclaration;
 typedef struct VarDeclarationList VarDeclarationList;
 typedef struct FuncCall FuncCall;
+typedef struct ParseState ParseState;
 
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
@@ -95,6 +98,7 @@ struct FunctionDescriptor {
 
 struct StructDescriptor {
 	VarDeclarationList* fields;
+	unsigned int size;
 };
 
 struct Datatype {
@@ -110,7 +114,7 @@ struct Datatype {
 
 	/* 0 if not array */
 	unsigned int array_dim;
-	unsigned int* array_size; /* null if !array_dim */
+	unsigned int* array_size; /* null if !array_dim.. array_size len == array_dim */
 
 	/* 0 if not pointer */
 	unsigned int ptr_dim;
@@ -133,7 +137,7 @@ struct Datatype {
 		FunctionDescriptor* fdesc;
 
 		/* only applicable if DATA_STRUCT */
-		StructDescriptor* sdesc;
+		TreeStruct* sdesc;
 	};
 };
 
@@ -184,6 +188,16 @@ struct TreeFunction {
 	TreeNode* child;
 };
 
+struct TreeStruct {
+	StructDescriptor* desc;
+	char* name;
+};
+
+struct TreeStructList {
+	TreeStruct* str;
+	TreeStructList* next;
+};
+
 struct TreeNode {
 	TreeNode* parent;
 	TreeNode* next;
@@ -199,6 +213,20 @@ struct TreeNode {
 	};
 };
 
-TreeNode* generate_syntax_tree(TokenList*);
+struct ParseState {
+	TokenList* tokens;
+	TokenList* marked;
+	TokenList* focus; /* used for parse_exprecsion and helper funcs */
+	TreeNode* root_node; /* type == NODE_BLOCK */
+	TreeNode* current_block;
+	TreeNode* append_target; /* what to append to */
+	Datatype* type_int;
+	Datatype* type_float;
+	Datatype* type_byte;
+	TreeStructList* defined_structs;
+};
+
+
+ParseState* generate_syntax_tree(TokenList*);
 
 #endif

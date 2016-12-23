@@ -1,3 +1,21 @@
+struct Vector {
+	x: float;
+	y: float;
+	z: float;
+	magnitude: float;
+};
+
+struct Sphere {
+	position: Vector;
+	radius: float;
+};
+
 main: () -> void {
-	if (10 * 20 + 3);
+
+	sphere: Sphere;
+	sphere.position.x = 10.0;
+	sphere.position.y = 20.0;
+	sphere.position.z = 30.0;
+	
+
 }

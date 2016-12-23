@@ -4,21 +4,8 @@
 #include <stdarg.h>
 #include "parse.h"
 
-typedef struct ParseState ParseState;
 typedef struct ExpStack ExpStack;
 typedef struct OpEntry OpEntry;
-
-struct ParseState {
-	TokenList* tokens;
-	TokenList* marked;
-	TokenList* focus; /* used for parse_exprecsion and helper funcs */
-	TreeNode* root_node; /* type == NODE_BLOCK */
-	TreeNode* current_block;
-	TreeNode* append_target; /* what to append to */
-	Datatype* type_int;
-	Datatype* type_float;
-	Datatype* type_byte;
-};
 
 struct ExpStack {
 	ExpNode* node;
@@ -44,6 +31,7 @@ static void parse_while(ParseState*);
 static void parse_for(ParseState*);
 static void parse_block(ParseState*);
 static void parse_statement(ParseState*);
+static void parse_struct(ParseState*);
 static VarDeclaration* parse_declaration(ParseState*);
 static ExpNode* parse_expression(ParseState*);
 static FunctionDescriptor* parse_function_descriptor(ParseState*);
@@ -81,6 +69,10 @@ static void register_local(ParseState*, VarDeclaration*);
 static VarDeclaration* find_local(ParseState*, const char*);
 static const Datatype* typecheck_expression(ParseState*, ExpNode*);
 static int types_match(const Datatype*, const Datatype*);
+static TreeStruct* find_struct(ParseState*, const char*);
+static void print_debug_info(ParseState*);
+static void print_struct_info(TreeStruct*, unsigned int);
+static char* tostring_datatype(const Datatype*);
 
 static void
 parse_die(ParseState* P, const char* message, ...) {
@@ -280,6 +272,41 @@ append_node(ParseState* P, TreeNode* node) {
 
 /* macro used in print_tree and print_expression */
 #define INDENT(n) for(int _=0;_<(n);_++)printf("  ")
+
+static void
+print_debug_info(ParseState* P) {
+	printf("DEFINED STRUCTS:\n");
+	for (TreeStructList* i = P->defined_structs; i; i = i->next) {
+		print_struct_info(i->str, 1);
+		INDENT(1);
+		printf("(sizeof(%s) == %d)\n", i->str->name, i->str->desc->size);
+	}
+	printf("\nGLOBAL VARIABLES:\n");
+	for (VarDeclarationList* i = P->root_node->blockval->locals; i; i = i->next) {
+		VarDeclaration* var = i->decl;
+		char* data_str = tostring_datatype(var->datatype);
+		INDENT(1);
+		printf("%s: %s\n", var->name, data_str);
+		free(data_str);
+	}
+	printf("\nSYNTAX TREE:\n");
+	print_tree(P->root_node, 1);
+}
+
+static void
+print_struct_info(TreeStruct* str, unsigned int indent) {
+	INDENT(indent);
+	printf("struct %s {\n", str->name);
+	for (VarDeclarationList* i = str->desc->fields; i; i = i->next) {
+		VarDeclaration* var = i->decl;
+		char* data_str = tostring_datatype(var->datatype);
+		INDENT(indent + 1);
+		printf("%s: %s\n", var->name, data_str);
+		free(data_str);
+	}
+	INDENT(indent);
+	printf("}\n");
+}
 
 static void
 print_tree(TreeNode* tree, int indent) {
@@ -499,6 +526,9 @@ tostring_datatype(const Datatype* data) {
 		case DATA_VOID:
 			strcat(buf, "void");
 			break;
+		case DATA_STRUCT: 
+			strcat(buf, data->sdesc->name);
+			break;
 		case DATA_FPTR:
 			strcat(buf, "(");
 			for (DatatypeList* i = data->fdesc->arguments; i; i = i->next) {
@@ -578,10 +608,14 @@ matches_datatype(ParseState* P) {
 		MATCH_TRUE();
 	}
 
-	/* TODO detect defined structs as well */
-	if (on_ident(P, "int") || on_ident(P, "float") || on_ident(P, "byte")) {
+	if (on_ident(P, "int") || on_ident(P, "float") || on_ident(P, "byte") || on_ident(P, "struct")) {
 		MATCH_TRUE();
 	}
+
+	/* check defined structs */
+	if (is_ident(P) && find_struct(P, P->tokens->token->sval)) {
+		MATCH_TRUE();
+	} 
 	
 	MATCH_FALSE();
 }
@@ -589,6 +623,16 @@ matches_datatype(ParseState* P) {
 static int
 matches_array(ParseState* P) {
 	return 0;
+}
+
+static TreeStruct*
+find_struct(ParseState* P, const char* name) {
+	for (TreeStructList* i = P->defined_structs; i; i = i->next) {
+		if (!strcmp(i->str->name, name)) {
+			return i->str;
+		}
+	}
+	return NULL;
 }
 
 static VarDeclaration*
@@ -1012,18 +1056,32 @@ parse_datatype(ParseState* P) {
 		/* not function... primitive type or struct (struct not handeled yet) */
 		if (on_ident(P, "int")) {
 			data->type = DATA_INT;
+			data->size = 8;
 		} else if (on_ident(P, "float")) {
 			data->type = DATA_FLOAT;
+			data->size = 8;
 		} else if (on_ident(P, "byte")) {
 			data->type = DATA_BYTE;
+			data->size = 1;
 		} else if (on_ident(P, "void")) {
 			data->type = DATA_VOID;
+			data->size = 0;
 		} else {
-			/* TODO handle struct */
-			if (is_ident(P)) {
-				parse_die(P, "unknown typename '%s'", P->tokens->token->sval);
+			if (!is_ident(P)) {
+				parse_die(P, "expected typename");
 			}
-			parse_die(P, "expected typename");
+			TreeStruct* str = find_struct(P, P->tokens->token->sval);
+			if (!str) {
+				parse_die(P, "unknown type '%s'", P->tokens->token->sval);
+			}
+			data->type = DATA_STRUCT;
+			data->sdesc = str;
+			data->size = str->desc->size;
+		}
+
+		/* overwrite size if it's a pointer */
+		if (data->ptr_dim > 0) {
+			data->size = 8;
 		}
 	}
 	
@@ -1049,6 +1107,83 @@ parse_declaration(ParseState* P) {
 	P->tokens = P->tokens->next;
 
 	return decl;
+}
+
+static void
+parse_struct(ParseState* P) {
+	/* starts on token 'struct' */
+	/* example struct declaration:
+	 *
+	 * struct Foo {
+	 *   x: int;
+	 *   y: ^float;
+	 * }
+	 */
+	
+	StructDescriptor* desc;
+	TreeStruct* str = malloc(sizeof(TreeStruct));
+	str->name = NULL;
+	desc = str->desc = malloc(sizeof(StructDescriptor));
+	desc->fields = NULL;
+	desc->size = 0;
+	
+	/* skip token 'struct' */ 
+	P->tokens = P->tokens->next;	
+
+	/* record name */
+	if (!is_ident(P)) {
+		parse_die(P, "expected identifier after token 'struct'");
+	}
+	str->name = malloc(strlen(P->tokens->token->sval) + 1);
+	strcpy(str->name, P->tokens->token->sval);
+	P->tokens = P->tokens->next;
+
+	eat_operator(P, '{');
+
+	/* get children */
+	while (matches_declaration(P)) {
+		printf("PARSE FIELD %s\n", P->tokens->token->sval);
+		VarDeclaration* field = parse_declaration(P);
+		desc->size += field->datatype->size;
+		eat_operator(P, ';');
+
+		VarDeclarationList* append = malloc(sizeof(VarDeclarationList));
+		append->decl = field;
+		append->next = NULL;
+		
+		/* append field to field list */
+		if (!desc->fields) {
+			desc->fields = append;
+		} else {
+			VarDeclarationList* scan = desc->fields;
+			while (scan->next) {
+				scan = scan->next;
+			}
+			scan->next = append;	
+		}
+	}
+
+	if (!desc->fields) {
+		parse_die(P, "struct '%s' must have at least one field", str->name);
+	}
+
+	eat_operator(P, '}');
+	eat_operator(P, ';');
+
+	/* append the struct to list on knowns */
+	TreeStructList* append = malloc(sizeof(TreeStructList));
+	append->str = str;
+	append->next = NULL;
+	if (!P->defined_structs) {
+		P->defined_structs = append;
+	} else {
+		TreeStructList* scan = P->defined_structs;
+		while (scan->next) {
+			scan = scan->next;
+		}
+		scan->next = append;
+	}
+
 }
 
 static void
@@ -1125,55 +1260,58 @@ parse_for(ParseState* P) {
 	append_node(P, node);
 }
 
-TreeNode*
+ParseState*
 generate_syntax_tree(TokenList* tokens) {
 
-	ParseState P;
-	P.tokens = tokens;
-	P.marked = NULL;
-	P.root_node = malloc(sizeof(TreeNode));
-	P.root_node->type = NODE_BLOCK;
-	P.root_node->blockval = malloc(sizeof(TreeBlock));
-	P.root_node->blockval->child = NULL;
-	P.root_node->blockval->locals = NULL;
-	P.root_node->parent = NULL;
-	P.current_block = P.root_node;
-	P.append_target = NULL;
+	ParseState* P = malloc(sizeof(ParseState));
+	P->tokens = tokens;
+	P->defined_structs = NULL;
+	P->marked = NULL;
+	P->root_node = malloc(sizeof(TreeNode));
+	P->root_node->type = NODE_BLOCK;
+	P->root_node->blockval = malloc(sizeof(TreeBlock));
+	P->root_node->blockval->child = NULL;
+	P->root_node->blockval->locals = NULL;
+	P->root_node->parent = NULL;
+	P->current_block = P->root_node;
+	P->append_target = NULL;
 
-	P.type_int = calloc(1, sizeof(Datatype));
-	P.type_int->type = DATA_INT;
-	P.type_int->size = 8;
+	P->type_int = calloc(1, sizeof(Datatype));
+	P->type_int->type = DATA_INT;
+	P->type_int->size = 8;
 	
-	P.type_float = calloc(1, sizeof(Datatype));
-	P.type_float->type = DATA_FLOAT;
-	P.type_float->size = 8;
+	P->type_float = calloc(1, sizeof(Datatype));
+	P->type_float->type = DATA_FLOAT;
+	P->type_float->size = 8;
 
-	P.type_byte = calloc(1, sizeof(Datatype));
-	P.type_byte->type = DATA_BYTE;
-	P.type_byte->size = 1;
+	P->type_byte = calloc(1, sizeof(Datatype));
+	P->type_byte->type = DATA_BYTE;
+	P->type_byte->size = 1;
 
-	while (P.tokens && P.tokens->token) {
-		if (on_ident(&P, "if")) {
-			parse_if(&P);
-		} else if (on_ident(&P, "while")) {
-			parse_while(&P);
-		} else if (on_ident(&P, "for")) {
-			parse_for(&P);
-		} else if (matches_declaration(&P)) {
-			VarDeclaration* var = parse_declaration(&P);
-			if (var->datatype->type == DATA_FPTR && on_op(&P, '{')) {
+	while (P->tokens && P->tokens->token) {
+		if (on_ident(P, "if")) {
+			parse_if(P);
+		} else if (on_ident(P, "while")) {
+			parse_while(P);
+		} else if (on_ident(P, "for")) {
+			parse_for(P);
+		} else if (on_ident(P, "struct")) {
+			parse_struct(P);
+		} else if (matches_declaration(P)) {
+			VarDeclaration* var = parse_declaration(P);
+			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
 
 				/* make sure it's in global scope */
-				if (P.append_target || P.current_block != P.root_node) {
-					parse_die(&P, "functions must be declared in the global scope");
+				if (P->current_block != P->root_node) {
+					parse_die(P, "functions must be declared in the global scope");
 				}
 
 				/* if it's an implementation, it can't be array or pointer type */
 				if (var->datatype->array_dim > 0) {
-					parse_die(&P, "an array of functions cannot be implemented");
+					parse_die(P, "an array of functions cannot be implemented");
 				}
 				if (var->datatype->ptr_dim > 0) {
-					parse_die(&P, "a function pointer cannot be implemented");
+					parse_die(P, "a function pointer cannot be implemented");
 				}
 
 				/* now that we know it's an implementation, wrap it in
@@ -1191,34 +1329,33 @@ generate_syntax_tree(TokenList* tokens) {
 				 *
 				 * **NOTE** name and descriptor not freed */	
 				free(var);
-				
-				append_node(&P, node);
 
+				append_node(P, node);
 			} else {
-				register_local(&P, var);
-				eat_operator(&P, ';');
+				register_local(P, var);
+				eat_operator(P, ';');
 			}
-		} else if (on_op(&P, '{')) {
-			parse_block(&P);
-		} else if (on_op(&P, '}')) {
-			if (P.current_block == P.root_node) {
-				parse_die(&P, "token '}' doesn't close anything");
+		} else if (on_op(P, '{')) {
+			parse_block(P);
+		} else if (on_op(P, '}')) {
+			if (P->current_block == P->root_node) {
+				parse_die(P, "token '}' doesn't close anything");
 			}
-			jump_out(&P);
+			jump_out(P);
 		} else {
-			parse_statement(&P);
+			parse_statement(P);
 		}
 	}
 
-	if (P.current_block != P.root_node) {
-		parse_die(&P, "expected '}' before EOF");
+	if (P->current_block != P->root_node) {
+		parse_die(P, "expected '}' before EOF");
 	}
-
-	print_tree(P.root_node, 0);
+	
+	print_debug_info(P);
 
 	/* TODO cleanup tokens + other stuff */
 
-	return P.root_node;
+	return P;
 
 }
 
