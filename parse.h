@@ -77,9 +77,11 @@ struct FuncCall {
 struct ExpNode {
 	ExpNodeType type;
 	ExpNode* parent;
+	const Datatype* eval;
 	enum {
+		LEAF_NA = 0,
 		LEAF_LEFT = 1,
-		LEAF_RIGHT = 2
+		LEAF_RIGHT = 2,
 	} side; /* NOTE only applicable if child of binop */
 	union {
 		BinaryOp* bval;

@@ -691,18 +691,20 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 		case EXP_NOEXP:
 			return NULL;
 		case EXP_INTEGER:
+			exp->eval = P->type_int;
 			return P->type_int;
 		case EXP_FLOAT:
+			exp->eval = P->type_float;
 			return P->type_float;
 		case EXP_UNARY:
-			return typecheck_expression(P, exp->uval->operand);
+			return exp->eval = typecheck_expression(P, exp->uval->operand);
 		case EXP_IDENTIFIER: {
 			/* TODO handle parent being '.' */
 			VarDeclaration* var = find_local(P, exp->sval);
 			if (!var) {
 				parse_die(P, "undeclared identifier '%s'", exp->sval);
 			}
-			return var->datatype;
+			return exp->eval = var->datatype;
 		}
 		case EXP_BINARY: {
 			switch (exp->bval->optype) {
@@ -723,7 +725,7 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 							tostring_datatype(right)
 						);
 					}
-					return left; /* they're both identical, doesn't matter which is returned */
+					return exp->eval = left; /* they're both identical, doesn't matter which is returned */
 				}
 			}
 		}
@@ -899,6 +901,7 @@ parse_expression(ParseState* P) {
 
 	for (ExpStack* i = postfix; i; i = i->next) {
 		ExpNode* at = i->node;
+		at->side = LEAF_NA;
 		if (at->type == EXP_INTEGER || at->type == EXP_FLOAT || at->type == EXP_IDENTIFIER) {
 			/* just a literal? append to tree */
 			expstack_push(&tree, at);	
@@ -1142,7 +1145,6 @@ parse_struct(ParseState* P) {
 
 	/* get children */
 	while (matches_declaration(P)) {
-		printf("PARSE FIELD %s\n", P->tokens->token->sval);
 		VarDeclaration* field = parse_declaration(P);
 		desc->size += field->datatype->size;
 		eat_operator(P, ';');
@@ -1273,6 +1275,7 @@ generate_syntax_tree(TokenList* tokens) {
 	P->root_node->blockval->child = NULL;
 	P->root_node->blockval->locals = NULL;
 	P->root_node->parent = NULL;
+	P->root_node->next = NULL;
 	P->current_block = P->root_node;
 	P->append_target = NULL;
 
