@@ -281,14 +281,6 @@ print_debug_info(ParseState* P) {
 		INDENT(1);
 		printf("(sizeof(%s) == %d)\n", i->str->name, i->str->desc->size);
 	}
-	printf("\nGLOBAL VARIABLES:\n");
-	for (VarDeclarationList* i = P->root_node->blockval->locals; i; i = i->next) {
-		VarDeclaration* var = i->decl;
-		char* data_str = tostring_datatype(var->datatype);
-		INDENT(1);
-		printf("%s: %s\n", var->name, data_str);
-		free(data_str);
-	}
 	printf("\nSYNTAX TREE:\n");
 	print_tree(P->root_node, 1);
 }
@@ -318,9 +310,24 @@ print_tree(TreeNode* tree, int indent) {
 	switch (tree->type) {
 		case NODE_BLOCK:
 			printf("BLOCK: [\n");
-			for (TreeNode* i = tree->blockval->child; i; i = i->next) {
-				print_tree(i, indent + 1);
+			INDENT(indent + 1);
+			printf("LOCALS: [\n");
+			for (VarDeclarationList* i = tree->blockval->locals; i; i = i->next) {
+				VarDeclaration* var = i->decl;
+				char* data_str = tostring_datatype(var->datatype);
+				INDENT(indent + 2);
+				printf("%s: %s\n", var->name, data_str);
+				free(data_str);
 			}
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent + 1);
+			printf("CHILDREN: [\n");
+			for (TreeNode* i = tree->blockval->child; i; i = i->next) {
+				print_tree(i, indent + 2);
+			}
+			INDENT(indent + 1);
+			printf("]\n");
 			INDENT(indent);
 			printf("]\n");
 			break;
@@ -691,11 +698,9 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 		case EXP_NOEXP:
 			return NULL;
 		case EXP_INTEGER:
-			exp->eval = P->type_int;
-			return P->type_int;
+			return exp->eval = P->type_int;
 		case EXP_FLOAT:
-			exp->eval = P->type_float;
-			return P->type_float;
+			return exp->eval = P->type_float;
 		case EXP_UNARY:
 			return exp->eval = typecheck_expression(P, exp->uval->operand);
 		case EXP_IDENTIFIER: {
@@ -979,11 +984,13 @@ parse_function_descriptor(ParseState* P) {
 	FunctionDescriptor* fdesc = malloc(sizeof(FunctionDescriptor));
 	fdesc->arguments = NULL;
 	fdesc->return_type = NULL;
+	fdesc->nargs = 0;
 
 	P->tokens = P->tokens->next; /* skip ( */
 	
 	while (!on_op(P, ')')) {
 		Datatype* data = parse_datatype(P);
+		fdesc->nargs++;
 		if (!fdesc->arguments) {
 			fdesc->arguments = malloc(sizeof(DatatypeList));
 			fdesc->arguments->data = data;
@@ -1233,6 +1240,7 @@ parse_while(ParseState* P) {
 	eat_operator(P, '(');
 	mark_operator(P, '(', ')');
 	node->whileval->condition = parse_expression(P);
+	typecheck_expression(P, node->whileval->condition);
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);

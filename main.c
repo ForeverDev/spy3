@@ -36,6 +36,12 @@ int main(int argc, char** argv) {
 	TokenList* tokens = generate_tokens_from_source(fspy);
 	ParseState* state = generate_syntax_tree(tokens);
 	generate_instructions(state, fasm);
+	/*
+	generate_bytecode(fasm, fbin);
+	spy_init();
+	spy_execute(fbin);
+	*/
+
 
 	return 0;
 

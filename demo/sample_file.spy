@@ -10,10 +10,10 @@ struct Sphere {
 	radius: float;
 };
 
-main: () -> void {
+main: (int, float) -> void {
 	
 	x: int;
 	
-	if (x == 3);	
+	if (x == 10);	
 
 }

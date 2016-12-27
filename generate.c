@@ -5,6 +5,9 @@
 #include "generate.h"
 
 #define FORMAT_LABEL "__L%04d__"
+#define FORMAT_FUNC  "__F%s__"
+
+#define FORMAT_DEF_FUNC FORMAT_FUNC ":\n"
 #define FORMAT_LOC_LABEL "." FORMAT_LABEL ":\n"
 #define FORMAT_DEF_LABEL FORMAT_LABEL ":\n"
 #define FORMAT_DEF_LOC_LABEL FORMAT_LOC_LABEL "\n"
@@ -18,6 +21,7 @@ struct CompileState {
 	TreeNode* root_node;
 	InstructionStack* ins_stack;
 	unsigned int label_count;
+	unsigned int return_label;
 	FILE* handle;
 };
 
@@ -36,11 +40,13 @@ struct InstructionStack {
 /* generate functions */
 static void generate_expression(CompileState*, ExpNode*);
 static void generate_if(CompileState*);
+static void generate_function(CompileState*);
 
 /* misc function */
 static int advance(CompileState*);
 static TreeNode* get_child(TreeNode*);
 static VarDeclaration* get_local(CompileState*, const char*);
+static char get_prefix(const Datatype*);
 
 /* writer functions */
 static void writeb(CompileState*, const char*, ...);
@@ -134,13 +140,18 @@ popb(CompileState* C) {
 	free(tail);
 }
 
+static char
+get_prefix(const Datatype* data) {
+	return (data->type == DATA_FLOAT && data->ptr_dim == 0) ? 'f' : 'i';
+}
+
 static VarDeclaration*
 get_local(CompileState* C, const char* identifier) {
 	for (TreeNode* i = C->focus; i; i = i->parent) {
 		if (i->type != NODE_BLOCK) {
 			continue;
 		}
-		for (VarDeclarationList* j = C->focus->blockval->locals; j; j = j->next) {
+		for (VarDeclarationList* j = i->blockval->locals; j; j = j->next) {
 			if (!strcmp(j->decl->name, identifier)) {
 				return j->decl;
 			}
@@ -197,6 +208,7 @@ advance(CompileState* C) {
 
 static void
 generate_expression(CompileState* C, ExpNode* exp) {
+	if (!exp) return;
 	int is_top = exp->parent == NULL;
 	switch (exp->type) {
 		case EXP_INTEGER:
@@ -212,13 +224,17 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				exp->parent->type == EXP_BINARY &&
 				exp->parent->bval->optype == '.'
 			);	
-			VarDeclaration* var = get_local(C, exp->sval);
+			if (is_object) {
+
+			} else {
+				VarDeclaration* var = get_local(C, exp->sval);
+			}
 			break;
 		}
 		case EXP_BINARY:
 			generate_expression(C, exp->bval->left);
 			generate_expression(C, exp->bval->right);
-			char prefix = exp->eval->type == DATA_FLOAT ? 'f' : 'i';
+			char prefix = get_prefix(exp->eval);
 			switch (exp->bval->optype) {
 				case '+':
 					writeb(C, "%cadd", prefix);	
@@ -232,28 +248,25 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				case '/':
 					writeb(C, "%cdiv", prefix);	
 					break;
-
-				/* TODO change how comparison operators work... right now,
-				 * icmp is used and the result is pushed onto the stack.  In
-				 * the future, the push flag instruction should be removed in
-				 * most cases */
+				
+				/* TODO implement top-level jump for comparison operators */
 				case '>':
-					writeb(C, "%ccmp\npgt", prefix);
+					writeb(C, "%ccmp\npgt\n%ctest", prefix, prefix);
 					break;
 				case '<':
-					writeb(C, "%ccmp\nplt", prefix);
+					writeb(C, "%ccmp\nplt\n%ctest", prefix, prefix);
 					break;
 				case SPEC_GE:
-					writeb(C, "%ccmp\npge", prefix);
+					writeb(C, "%ccmp\npge\n%ctest", prefix, prefix);
 					break;
 				case SPEC_LE:
-					writeb(C, "%ccmp\nple", prefix);
+					writeb(C, "%ccmp\nple\n%ctest", prefix, prefix);
 					break;
 				case SPEC_EQ:
-					writeb(C, "%ccmp\npe", prefix);
+					writeb(C, "%ccmp\npe\n%ctest", prefix, prefix);
 					break;
 				case SPEC_NEQ:
-					writeb(C, "%ccmp\npne", prefix);
+					writeb(C, "%ccmp\npne\n%ctest", prefix, prefix);
 					break;
 			}
 			break;
@@ -274,6 +287,31 @@ generate_if(CompileState* C) {
 	pushb(C, FORMAT_DEF_LABEL, test_neg);	
 }
 
+static void
+generate_while(CompileState* C) {
+	unsigned int top = C->label_count++;
+	unsigned int test_neg = C->label_count++;
+	writeb(C, FORMAT_DEF_LABEL, top);
+	generate_expression(C, C->focus->whileval->condition);
+	writeb(C, "jz " FORMAT_LABEL "\n", test_neg);
+	pushb(C, "jmp " FORMAT_LABEL "\n", top);
+	pushb(C, FORMAT_DEF_LABEL, test_neg);
+}
+
+static void
+generate_function(CompileState* C) {
+	C->return_label = C->label_count++;
+	TreeFunction* func = C->focus->funcval;
+	FunctionDescriptor* desc = func->desc;
+	writeb(C, FORMAT_DEF_FUNC, func->name);	
+	int index = 0;
+	for (DatatypeList* i = desc->arguments; i; i = i->next) {
+		writeb(C, "%carg %d\n", get_prefix(i->data), index++);
+	}
+	pushb(C, FORMAT_DEF_LABEL, C->return_label);
+	pushb(C, "iret\n");
+}
+
 void
 generate_instructions(ParseState* P, const char* outfile_name) {
 
@@ -291,6 +329,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	C.label_count = 0;
 
 	if (!C.root_node) {
+		fclose(C.handle);
 		return;
 	}
 	
@@ -299,6 +338,15 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 			case NODE_IF:
 				generate_if(&C);
 				break;	
+			case NODE_WHILE:
+				generate_while(&C);
+				break;
+			case NODE_FUNC_IMPL:
+				generate_function(&C);
+				break;
+			case NODE_STATEMENT:
+				generate_expression(&C, C.focus->stateval->exp);
+				break;
 			case NODE_BLOCK:
 				break;
 		}
@@ -307,7 +355,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	while (C.ins_stack) {
 		popb(&C);
 	}
-
+	
 	writeb(&C, "exit\n");
 
 	fclose(C.handle);

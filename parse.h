@@ -94,6 +94,7 @@ struct ExpNode {
 };
 
 struct FunctionDescriptor {
+	unsigned int nargs;
 	DatatypeList* arguments;
 	Datatype* return_type;
 };
@@ -151,6 +152,12 @@ struct DatatypeList {
 struct VarDeclaration {
 	char* name;
 	Datatype* datatype;
+	
+	/* offset is a bit special... for function arguments and locals, it is the
+	 * offset from the base pointer.  for struct field, it is the offset from
+	 * the start structs */
+	unsigned int offset;
+
 };
 
 struct VarDeclarationList {
