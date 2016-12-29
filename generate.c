@@ -20,6 +20,7 @@ struct CompileState {
 	TreeNode* focus;
 	TreeNode* root_node;
 	InstructionStack* ins_stack;
+	TreeStructList* defined_structs;
 	unsigned int label_count;
 	unsigned int return_label;
 	FILE* handle;
@@ -41,11 +42,14 @@ struct InstructionStack {
 static void generate_expression(CompileState*, ExpNode*);
 static void generate_if(CompileState*);
 static void generate_function(CompileState*);
+static void initialize_local(CompileState*, VarDeclaration*);
 
 /* misc function */
 static int advance(CompileState*);
 static TreeNode* get_child(TreeNode*);
 static VarDeclaration* get_local(CompileState*, const char*);
+static TreeStruct* get_struct(CompileState*, const char*);
+static VarDeclaration* get_field(const TreeStruct*, const char*);
 static char get_prefix(const Datatype*);
 
 /* writer functions */
@@ -145,6 +149,26 @@ get_prefix(const Datatype* data) {
 	return (data->type == DATA_FLOAT && data->ptr_dim == 0) ? 'f' : 'i';
 }
 
+static TreeStruct*
+get_struct(CompileState* C, const char* identifier) {
+	for (TreeStructList* i = C->defined_structs; i; i = i->next) {
+		if (!strcmp(i->str->name, identifier)) {
+			return i->str;
+		}
+	}
+	return NULL;
+}
+
+static VarDeclaration*
+get_field(const TreeStruct* str, const char* name) {
+	for (VarDeclarationList* i = str->desc->fields; i; i = i->next) {
+		if (!strcmp(i->decl->name, name)) {
+			return i->decl;
+		}
+	}
+	return NULL;
+}
+
 static VarDeclaration*
 get_local(CompileState* C, const char* identifier) {
 	for (TreeNode* i = C->focus; i; i = i->parent) {
@@ -210,73 +234,103 @@ static void
 generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
 	int is_top = exp->parent == NULL;
+	int dont_der = (
+		exp->parent != NULL &&
+		exp->parent->type == EXP_BINARY &&
+		exp->parent->bval->optype == '=' &&
+		exp->side == LEAF_LEFT
+	);
 	switch (exp->type) {
 		case EXP_INTEGER:
-			writeb(C, "iconst %d", exp->ival);
+			writeb(C, "iconst %d\n", exp->ival);
 			break;
 		case EXP_FLOAT:
-			writeb(C, "fconst %f", exp->fval);
+			writeb(C, "fconst %f\n", exp->fval);
 			break;
 		case EXP_IDENTIFIER: {
-			int is_object = (
-				exp->side == LEAF_LEFT &&
-				exp->parent &&
-				exp->parent->type == EXP_BINARY &&
-				exp->parent->bval->optype == '.'
-			);	
-			if (is_object) {
-
+			/* NOTE generate_expression will __never__ be called on an
+			 * identifier that is not a variable... therefore it is safe
+			 * to assume that the get_local result is non-null */
+			VarDeclaration* var = get_local(C, exp->sval);
+			if (dont_der) {
+				writeb(C, "lea %d\n", var->offset);
 			} else {
-				VarDeclaration* var = get_local(C, exp->sval);
+				char prefix = get_prefix(var->datatype);
+				writeb(C, "%clocall %d\n", prefix, var->offset);
 			}
 			break;
 		}
-		case EXP_BINARY:
-			generate_expression(C, exp->bval->left);
-			generate_expression(C, exp->bval->right);
-			char prefix = get_prefix(exp->eval);
-			switch (exp->bval->optype) {
-				case '+':
-					writeb(C, "%cadd", prefix);	
-					break;
-				case '-':
-					writeb(C, "%csub", prefix);	
-					break;
-				case '*':
-					writeb(C, "%cmul", prefix);	
-					break;
-				case '/':
-					writeb(C, "%cdiv", prefix);	
-					break;
-				
-				/* TODO implement top-level jump for comparison operators */
-				case '>':
-					writeb(C, "%ccmp\npgt\n%ctest", prefix, prefix);
-					break;
-				case '<':
-					writeb(C, "%ccmp\nplt\n%ctest", prefix, prefix);
-					break;
-				case SPEC_GE:
-					writeb(C, "%ccmp\npge\n%ctest", prefix, prefix);
-					break;
-				case SPEC_LE:
-					writeb(C, "%ccmp\nple\n%ctest", prefix, prefix);
-					break;
-				case SPEC_EQ:
-					writeb(C, "%ccmp\npe\n%ctest", prefix, prefix);
-					break;
-				case SPEC_NEQ:
-					writeb(C, "%ccmp\npne\n%ctest", prefix, prefix);
-					break;
+		case EXP_BINARY: {
+			ExpNode* lhs = exp->bval->left;
+			ExpNode* rhs = exp->bval->right;
+			if (exp->bval->optype == '.') {
+				int is_bottom = !(
+					exp->parent &&
+					exp->parent->type == EXP_BINARY &&
+					exp->parent->bval->optype == '.'
+				);
+				generate_expression(C, exp->bval->left);				
+				if (is_bottom) {
+					VarDeclaration* obj = get_local(C, lhs->sval);
+					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
+					/* call to generate made lea, now add offset */
+					writeb(C, "iinc %d\n", field->offset);	
+				}
+			} else if (exp->bval->optype == '=') {
+				generate_expression(C, lhs);
+				generate_expression(C, rhs);
+				if (!is_top) {
+					writeb(C, "dup\n");
+				}
+				writeb(C, "%csave\n", get_prefix(lhs->eval)); 
+			} else { 
+				generate_expression(C, lhs);
+				generate_expression(C, rhs);
+				char prefix = get_prefix(exp->eval);
+				switch (exp->bval->optype) {
+					case '+':
+						writeb(C, "%cadd", prefix);	
+						break;
+					case '-':
+						writeb(C, "%csub", prefix);	
+						break;
+					case '*':
+						writeb(C, "%cmul", prefix);	
+						break;
+					case '/':
+						writeb(C, "%cdiv", prefix);	
+						break;
+					
+					/* TODO implement top-level jump for comparison operators */
+					case '>':
+						writeb(C, "%ccmp\npgt\n%ctest", prefix, prefix);
+						break;
+					case '<':
+						writeb(C, "%ccmp\nplt\n%ctest", prefix, prefix);
+						break;
+					case SPEC_GE:
+						writeb(C, "%ccmp\npge\n%ctest", prefix, prefix);
+						break;
+					case SPEC_LE:
+						writeb(C, "%ccmp\nple\n%ctest", prefix, prefix);
+						break;
+					case SPEC_EQ:
+						writeb(C, "%ccmp\npe\n%ctest", prefix, prefix);
+						break;
+					case SPEC_NEQ:
+						writeb(C, "%ccmp\npne\n%ctest", prefix, prefix);
+						break;
+				}
+				writeb(C, "\n");
 			}
 			break;
+		}
 		case EXP_UNARY:
 			generate_expression(C, exp->uval->operand);
 			break;
 		default:
 			return;	
 	}
-	writeb(C, "\n");
 }
 
 static void
@@ -304,12 +358,26 @@ generate_function(CompileState* C) {
 	TreeFunction* func = C->focus->funcval;
 	FunctionDescriptor* desc = func->desc;
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
+	writeb(C, "res %d\n", desc->stack_space);
 	int index = 0;
 	for (DatatypeList* i = desc->arguments; i; i = i->next) {
 		writeb(C, "%carg %d\n", get_prefix(i->data), index++);
 	}
 	pushb(C, FORMAT_DEF_LABEL, C->return_label);
 	pushb(C, "iret\n");
+}
+
+static void
+initialize_local(CompileState* C, VarDeclaration* var) {
+	int is_ptr = var->datatype->ptr_dim > 0;
+	writeb(C, "; initialize '%s'\n", var->name);
+	if (var->datatype->type == DATA_STRUCT && !is_ptr) {
+		/* if it's a struct, initialize it as a pointer to stack space */
+		writeb(C, "lea %d\n", var->offset);
+	} else {
+		writeb(C, "iconst 0\n");
+	}
+	writeb(C, "ilocals %d\n\n", var->offset);
 }
 
 void
@@ -324,6 +392,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	}
 
 	C.root_node = P->root_node;
+	C.defined_structs = P->defined_structs;
 	C.focus = C.root_node;
 	C.ins_stack = NULL;
 	C.label_count = 0;
@@ -348,6 +417,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 				generate_expression(&C, C.focus->stateval->exp);
 				break;
 			case NODE_BLOCK:
+				for (VarDeclarationList* i = C.focus->blockval->locals; i; i = i->next) {
+					initialize_local(&C, i->decl);
+				}
 				break;
 		}
 	} while (advance(&C));

@@ -8,7 +8,6 @@ typedef struct TreeNode TreeNode;
 typedef struct TreeIf TreeIf;
 typedef struct TreeWhile TreeWhile;
 typedef struct TreeFor TreeFor;
-typedef struct TreeFunctionImpl TreeFunctionImpl;
 typedef struct TreeBreak TreeBreak;
 typedef struct TreeContinue TreeContinue;
 typedef struct TreeReturn TreeReturn;
@@ -95,6 +94,7 @@ struct ExpNode {
 
 struct FunctionDescriptor {
 	unsigned int nargs;
+	unsigned int stack_space;
 	DatatypeList* arguments;
 	Datatype* return_type;
 };
@@ -229,10 +229,12 @@ struct ParseState {
 	TreeNode* root_node; /* type == NODE_BLOCK */
 	TreeNode* current_block;
 	TreeNode* append_target; /* what to append to */
+	TreeNode* current_function;
 	Datatype* type_int;
 	Datatype* type_float;
 	Datatype* type_byte;
 	TreeStructList* defined_structs;
+	unsigned int current_offset;
 };
 
 

@@ -1,19 +1,15 @@
-struct Vector {
-	x: float;
-	y: float;
-	z: float;
-	magnitude: float;
-};
+struct Example {
+	field: int;
+	field2: int;
+};	
 
-struct Sphere {
-	position: Vector;
-	radius: float;
-};
+main: () -> void {
 
-main: (int, float) -> void {
+	foo: Example;
 	
-	x: int;
+	while (1 == 1) {
+		bar: int;
+		foo.field = bar = 10;
+	}
 	
-	if (x == 10);	
-
 }

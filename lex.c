@@ -224,7 +224,7 @@ token_tostring(Token* t) {
 			return tokcode_tostring(t->oval);
 		case TOK_INTEGER: {
 			char* buf = malloc(64);
-			sprintf(buf, "%d", t->ival);
+			sprintf(buf, "%lld", t->ival);
 			return buf;
 		}
 		case TOK_FLOAT: {

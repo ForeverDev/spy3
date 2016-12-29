@@ -73,6 +73,7 @@ static TreeStruct* find_struct(ParseState*, const char*);
 static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
 static char* tostring_datatype(const Datatype*);
+static VarDeclaration* find_field(const TreeStruct*, const char*);
 
 static void
 parse_die(ParseState* P, const char* message, ...) {
@@ -237,6 +238,9 @@ append_node(ParseState* P, TreeNode* node) {
 				target->forval->child = node;
 				break;
 			case NODE_FUNC_IMPL:
+				/* found function? reset offset */
+				P->current_offset = target->funcval->desc->stack_space;
+				P->current_function = target;
 				target->funcval->child = node;
 				break;
 		}
@@ -643,6 +647,16 @@ find_struct(ParseState* P, const char* name) {
 }
 
 static VarDeclaration*
+find_field(const TreeStruct* str, const char* name) {
+	for (VarDeclarationList* i = str->desc->fields; i; i = i->next) {
+		if (!strcmp(i->decl->name, name)) {
+			return i->decl;
+		}
+	}
+	return NULL;
+}
+
+static VarDeclaration*
 find_local(ParseState* P, const char* name) {
 	for (TreeNode* i = P->current_block; i; i = i->parent) {
 		if (i->type != NODE_BLOCK) {
@@ -714,9 +728,53 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 		case EXP_BINARY: {
 			switch (exp->bval->optype) {
 				case '.': {
-					const Datatype* left = typecheck_expression(P, exp->bval->left);
-					const Datatype* right = typecheck_expression(P, exp->bval->right);
-					/* TODO implement '.' operator.. structs haven't yet been implemented :( */
+					/* LHS must be either an identifier or another '.' */
+					ExpNode* lhs = exp->bval->left;
+					ExpNode* rhs = exp->bval->right;
+					if (rhs->type != EXP_IDENTIFIER) {
+						parse_die(P, "the right side of the '.' operator must be an identifier");
+					}
+					if (lhs->type == EXP_IDENTIFIER) {
+						/* now we know both of them are identifiers... this is the lowest level of
+						 * the dot chain... typecheckable */
+						VarDeclaration* var = find_local(P, lhs->sval);
+						if (!var) {
+							parse_die(P, "undeclared identifier '%s'", lhs->sval);
+						}
+						if (var->datatype->type != DATA_STRUCT) {
+							parse_die(P, "attempt to use '.' operator on a non-object");
+						}
+						VarDeclaration* field = find_field(var->datatype->sdesc, rhs->sval);
+						if (!field) {
+							parse_die(P, 
+								"'%s' is not a valid field of '%s' (type of '%s' is '%s')",
+								rhs->sval,
+								lhs->sval,
+								lhs->sval,
+								tostring_datatype(var->datatype)
+							);
+						}
+						/* identifiers can't get evaluated types but the parent operator can */
+						lhs->eval = NULL;
+						rhs->eval = NULL;
+						return exp->eval = field->datatype;
+					} else if (lhs->type == EXP_BINARY && lhs->bval->optype == '.') {
+						/* it's a dot chain... the struct we need to check will be returned
+						 * from a recursive typecheck call */
+						const Datatype* str = typecheck_expression(P, lhs);
+						VarDeclaration* field = find_field(str->sdesc, rhs->sval);
+						if (!field) {
+							parse_die(P, 
+								"'%s' is not a valid field of struct '%s'", 
+								rhs->sval,
+								tostring_datatype(str)
+							);
+						}
+						rhs->eval = NULL;
+						return exp->eval = field->datatype;
+					} else {
+						parse_die(P, "the left side of the '.' operator must be an identifier");
+					}
 					break;
 				}
 				default: {
@@ -735,6 +793,7 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			}
 		}
 	}
+	return NULL;
 }
 
 /* expects end of exprecsion to be marked... NOT inclusive */
@@ -985,12 +1044,14 @@ parse_function_descriptor(ParseState* P) {
 	fdesc->arguments = NULL;
 	fdesc->return_type = NULL;
 	fdesc->nargs = 0;
+	fdesc->stack_space = 0;
 
 	P->tokens = P->tokens->next; /* skip ( */
 	
 	while (!on_op(P, ')')) {
 		Datatype* data = parse_datatype(P);
 		fdesc->nargs++;
+		fdesc->stack_space += data->size;
 		if (!fdesc->arguments) {
 			fdesc->arguments = malloc(sizeof(DatatypeList));
 			fdesc->arguments->data = data;
@@ -1153,6 +1214,7 @@ parse_struct(ParseState* P) {
 	/* get children */
 	while (matches_declaration(P)) {
 		VarDeclaration* field = parse_declaration(P);
+		field->offset = desc->size;
 		desc->size += field->datatype->size;
 		eat_operator(P, ';');
 
@@ -1204,6 +1266,7 @@ parse_statement(ParseState* P) {
 	/* starts on first token of expression... parse it */
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
+	typecheck_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 
 	append_node(P, node);
@@ -1284,8 +1347,10 @@ generate_syntax_tree(TokenList* tokens) {
 	P->root_node->blockval->locals = NULL;
 	P->root_node->parent = NULL;
 	P->root_node->next = NULL;
+	P->current_function = NULL;
 	P->current_block = P->root_node;
 	P->append_target = NULL;
+	P->current_offset = 0;
 
 	P->type_int = calloc(1, sizeof(Datatype));
 	P->type_int->type = DATA_INT;
@@ -1310,6 +1375,11 @@ generate_syntax_tree(TokenList* tokens) {
 			parse_struct(P);
 		} else if (matches_declaration(P)) {
 			VarDeclaration* var = parse_declaration(P);
+			var->offset = P->current_offset;
+			P->current_offset += var->datatype->size;
+			if (P->current_function) {
+				P->current_function->funcval->desc->stack_space += var->datatype->size;
+			}
 			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
 
 				/* make sure it's in global scope */

@@ -620,7 +620,7 @@ spy_execute(const char* filename) {
 
 			/* RES */
 			case 0x2C:
-				spy->sp += spy_code_int64()*8;
+				spy->sp += spy_code_int64();
 				break;
 
 			/* IINC */
@@ -635,17 +635,17 @@ spy_execute(const char* filename) {
 
 			/* IARG */
 			case 0x2F:
-				spy_push_int(spy, *(spy_int *)&spy->bp[-3*8 - spy_code_int64()*8]);
+				spy_push_int(spy, *(spy_int *)&spy->bp[-3*8 - spy_code_int64()]);
 				break;
 			
 			/* BARG */
 			case 0x30:
-				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int64()*8]);
+				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int64()]);
 				break;
 
 			/* LEA */
 			case 0x31:
-				spy_push_int(spy, (spy_int)(&spy->bp[8 + spy_code_int64()*8] - spy->memory));
+				spy_push_int(spy, (spy_int)(&spy->bp[8 + spy_code_int64()] - spy->memory));
 				break;
 
 			/* AISAVE (absolute integer save) */
@@ -746,22 +746,22 @@ spy_execute(const char* filename) {
 
 			/* ILOCALL */
 			case 0x39:
-				spy_push_int(spy, *(spy_int *)&spy->bp[8 + spy_code_int64()*8]);
+				spy_push_int(spy, *(spy_int *)&spy->bp[8 + spy_code_int64()]);
 				break;
 			
 			/* BLOCALL */
 			case 0x3A: 
-				spy_push_byte(spy, spy->bp[8 + spy_code_int64()*8]);
+				spy_push_byte(spy, spy->bp[8 + spy_code_int64()]);
 				break;
 			
 			/* ILOCALS */
 			case 0x3B:
-				*(spy_int *)&spy->bp[8 + spy_code_int64()*8] = spy_pop_int(spy);
+				*(spy_int *)&spy->bp[8 + spy_code_int64()] = spy_pop_int(spy);
 				break;
 
 			/* BLOCALS */
 			case 0x3C:
-				spy->bp[8 + spy_code_int64()*8] = spy_pop_byte(spy);
+				spy->bp[8 + spy_code_int64()] = spy_pop_byte(spy);
 				break;
 
 			/* PE */
@@ -870,12 +870,12 @@ spy_execute(const char* filename) {
 
 			/* FLOCALL */
 			case 0x50:
-				spy_push_float(spy, *(spy_float *)&spy->bp[8 + spy_code_int64()*8]);
+				spy_push_float(spy, *(spy_float *)&spy->bp[8 + spy_code_int64()]);
 				break;
 
 			/* FLOCALS */
 			case 0x51:
-				*(spy_float *)&spy->bp[8 + spy_code_int64()*8] = spy_pop_float(spy);
+				*(spy_float *)&spy->bp[8 + spy_code_int64()] = spy_pop_float(spy);
 				break;
 
 			/* AFSAVE */
@@ -898,7 +898,7 @@ spy_execute(const char* filename) {
 
 			/* FARG */
 			case 0x55:
-				spy_push_float(spy, *(spy_float *)&spy->bp[-3*8 - spy_code_int64()*8]);
+				spy_push_float(spy, *(spy_float *)&spy->bp[-3*8 - spy_code_int64()]);
 				break;
 
 			/* ITOF */
