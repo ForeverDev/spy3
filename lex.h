@@ -36,6 +36,7 @@ typedef enum TokenType TokenType;
 #define SPEC_ARROW			23 /* -> */
 #define SPEC_TYPENAME		24 /* typename */
 #define SPEC_SIZEOF			25 /* sizeof */
+#define SPEC_CALL			26
 
 enum TokenType {
 	TOK_NOTOK = 0,

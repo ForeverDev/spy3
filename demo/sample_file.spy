@@ -1,26 +1,15 @@
-struct Vector {
-	x: float;
-	y: float;
+struct Bar {
+	function: int;
 };
 
-struct Circle {
-	position: Vector;
-	velocity: Vector;
-	radius: float;
+struct Foo {
+	thing: Bar;
 };
 
 main: () -> void {
 
-	foo: Circle;
-	
-	foo.position.x = 10.0;
-	foo.position.y = 20.0;
-	foo.velocity.x = 0.0;
-	foo.velocity.y = 0.0 - 0.5;
-	foo.radius = 30.0;
-	
-	while (foo.position.y + foo.radius/2.0 > 0.0) {
-		foo.position.y += foo.velocity.y;
-	}	
+	meme: Foo;
+
+	meme.thing.function = 10;
 	
 }

@@ -68,9 +68,10 @@ struct UnaryOp {
 };
 
 struct FuncCall {
-	ExpNode* fptr; /* should evaluate to the address of a function */
 	ExpNode* arguments;
 	int num_args;
+	int computed; /* computed if fptr is not just an identifier */
+	ExpNode* fptr; /* should evaluate to the address of a function */
 };
 
 struct ExpNode {

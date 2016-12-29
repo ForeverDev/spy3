@@ -452,6 +452,11 @@ print_expression(ExpNode* exp, int indent) {
 		case EXP_IDENTIFIER:
 			printf("%s\n", exp->sval);
 			break;
+		case EXP_CALL:
+			printf("CALL (computed = %d)\n", exp->cval->computed);
+			print_expression(exp->cval->fptr, indent + 1);
+			print_expression(exp->cval->arguments, indent + 1);
+			break;
 	}
 }
 
@@ -839,7 +844,8 @@ parse_expression(ParseState* P) {
 		[SPEC_TYPENAME]		= {10, ASSOC_RIGHT, OP_UNARY},
 		['.']				= {11, ASSOC_LEFT, OP_BINARY},
 		[SPEC_INC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
-		[SPEC_DEC_ONE]		= {11, ASSOC_LEFT, OP_UNARY}
+		[SPEC_DEC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
+		[SPEC_CALL]			= {11, ASSOC_LEFT, OP_UNARY}
 	};
 
 	ExpStack* operators = NULL;	
@@ -855,13 +861,51 @@ parse_expression(ParseState* P) {
 		}
 		/* function call? */
 		if (prev && prev->type == TOK_IDENTIFIER && tok->type == TOK_OPERATOR && tok->oval == '(') {
-			P->tokens = P->tokens->next; /* advance to identifier */
+			P->tokens = P->tokens->next; /* advance to first argument token */
+			/* save mark */
+			TokenList* marksave = P->marked;
+			mark_operator(P, '(', ')');
 			ExpNode* push = malloc(sizeof(ExpNode));
 			push->type = EXP_CALL;
 			push->parent = NULL;
 			push->cval = malloc(sizeof(FuncCall));
 			push->cval->fptr = NULL;
-			push->cval->arguments = NULL;
+			push->cval->arguments = parse_expression(P);
+			push->cval->arguments->parent = push;
+			push->cval->computed = 0;
+			/* revert mark */
+			P->marked = marksave;
+			ExpNode* top;
+			const OpEntry* info = &prec[SPEC_CALL];
+			/* TODO !!!get rid of repetition!!! */
+			while (1) {
+				top = expstack_top(&operators);
+				if (!top) break;
+				int top_is_unary = top->type == EXP_UNARY;
+				int top_is_binary = top->type == EXP_BINARY;
+				int top_is_call = top->type == EXP_CALL;
+				const OpEntry* top_info;
+				if (top_is_unary) {
+					/* unary operator is on top of stack */
+					top_info = &prec[top->uval->optype];
+				} else if (top_is_binary) {
+					/* binary operator is on top of stack */
+					top_info = &prec[top->bval->optype];
+				} else if (top_is_call) {
+					top_info = &prec[SPEC_CALL];
+				}
+				/* found open parenthesis, break */
+				if (top_is_unary && top->uval->optype == '(') {
+					break;
+				}
+				if (info->assoc == ASSOC_LEFT) {
+					if (info->prec > top_info->prec) break;
+				} else {
+					if (info->prec >= top_info->prec) break;
+				}
+				expstack_push(&postfix, expstack_pop(&operators));
+			}
+			expstack_push(&operators, push);
 		} else if (tok->type == TOK_OPERATOR) {
 			/* use assoc to make sure it exists */
 			if (prec[tok->oval].assoc) {
@@ -872,6 +916,7 @@ parse_expression(ParseState* P) {
 					if (!top) break;
 					int top_is_unary = top->type == EXP_UNARY;
 					int top_is_binary = top->type == EXP_BINARY;
+					int top_is_call = top->type == EXP_CALL;
 					const OpEntry* top_info;
 					if (top_is_unary) {
 						/* unary operator is on top of stack */
@@ -879,6 +924,8 @@ parse_expression(ParseState* P) {
 					} else if (top_is_binary) {
 						/* binary operator is on top of stack */
 						top_info = &prec[top->bval->optype];
+					} else if (top_is_call) {
+						top_info = &prec[SPEC_CALL];
 					}
 					/* found open parenthesis, break */
 					if (top_is_unary && top->uval->optype == '(') {
@@ -954,7 +1001,7 @@ parse_expression(ParseState* P) {
 	while (expstack_top(&operators)) {
 		expstack_push(&postfix, expstack_pop(&operators));
 	}
-
+	
 	/* === STAGE TWO ===
 	 * convert from postix to a tree
 	 */
@@ -969,6 +1016,12 @@ parse_expression(ParseState* P) {
 		if (at->type == EXP_INTEGER || at->type == EXP_FLOAT || at->type == EXP_IDENTIFIER) {
 			/* just a literal? append to tree */
 			expstack_push(&tree, at);	
+		} else if (at->type == EXP_CALL) {
+			at->cval->fptr = expstack_pop(&tree);
+			if (at->cval->fptr->type != EXP_IDENTIFIER) {
+				at->cval->computed = 1;
+			}
+			expstack_push(&tree, at);
 		} else if (at->type == EXP_UNARY) {
 			ExpNode* operand = expstack_pop(&tree);
 			if (!operand) {
@@ -977,7 +1030,7 @@ parse_expression(ParseState* P) {
 			operand->parent = at;
 			at->uval->operand = operand;
 			expstack_push(&tree, at);
-		} else if (at->type == EXP_BINARY || at->type == EXP_CALL) {
+		} else if (at->type == EXP_BINARY) {
 			/* pop the leaves off of the stack */
 			ExpNode* leaf[2];
 			for (int j = 0; j < 2; j++) {
@@ -992,9 +1045,7 @@ parse_expression(ParseState* P) {
 			if (at->type == EXP_BINARY) {
 				at->bval->left = leaf[1];
 				at->bval->right = leaf[0];
-			} else {
-				at->cval->fptr = leaf[1];
-				at->cval->arguments = leaf[0];
+				break;
 			}
 			/* throw the branch back onto the stack */
 			expstack_push(&tree, at);

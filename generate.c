@@ -298,7 +298,6 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			} else if (IS_ASSIGN(exp->bval)) {
 				char lp = get_prefix(lhs->eval);
 				generate_expression(C, lhs);
-				writeb(C, "dup\n");
 				writeb(C, "%cder\n", lp);
 				generate_expression(C, rhs);
 				switch (exp->bval->optype) {
@@ -333,6 +332,9 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						writeb(C, "xor\n");
 						break;
 
+				}
+				if (!is_top) {
+					writeb(C, "dup\n");
 				}
 				writeb(C, "%csave\n", lp);
 			} else { 

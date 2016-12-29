@@ -350,9 +350,11 @@ spy_execute(const char* filename) {
 		}
 
 		opcode = spy_code_int8();
-
+		
+		/*
 		const SpyInstruction* ins = spy_get_instruction_op(opcode);
 		printf("EXECUTED (%s)\n", ins->name);
+		*/
 
 		instructions++;
 
