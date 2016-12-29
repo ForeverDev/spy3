@@ -99,6 +99,7 @@ const SpyInstruction spy_instructions[255] = {
 	{"itof", 0x56, {OP_NONE}},				/* [int value] -> [float value] */
 	{"ftoi", 0x57, {OP_NONE}},				/* [float value] -> [int value] */
 	{"dup", 0x58, {OP_NONE}},				/* [int value] -> [int value, int value] */
+	{"fsave", 0x59, {OP_NONE}},				/* [int addr, float value] -> [] */
 
 	/* debuggers */
 	{"ilog", 0xFD, {OP_NONE}},				
@@ -343,12 +344,16 @@ spy_execute(const char* filename) {
 	/* go */
 	do {
 		/* check for stack overflow before executing the next instruction...
-		 * note: 24 is the maximum number of stack space that an instruction requires */
+		 * note: 24 is the maximum stack space that an instruction requires */
 		if (&spy->memory[SIZE_STACK + SIZE_CODE] - spy->sp <= 24) {
 			spy_die("stack overflow");
 		}
 
 		opcode = spy_code_int8();
+
+		const SpyInstruction* ins = spy_get_instruction_op(opcode);
+		printf("EXECUTED (%s)\n", ins->name);
+
 		instructions++;
 
 		switch (opcode) {
@@ -619,9 +624,12 @@ spy_execute(const char* filename) {
 			}
 
 			/* RES */
-			case 0x2C:
-				spy->sp += spy_code_int64();
+			case 0x2C: {
+				spy_int inc = spy_code_int64();
+				memset(spy->sp, 0, inc);
+				spy->sp += inc;
 				break;
+			}
 
 			/* IINC */
 			case 0x2D:
@@ -635,12 +643,12 @@ spy_execute(const char* filename) {
 
 			/* IARG */
 			case 0x2F:
-				spy_push_int(spy, *(spy_int *)&spy->bp[-3*8 - spy_code_int64()]);
+				spy_push_int(spy, *(spy_int *)&spy->bp[-3*8 - spy_code_int64()*8]);
 				break;
 			
 			/* BARG */
 			case 0x30:
-				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int64()]);
+				spy_push_byte(spy, spy->bp[-3*8 - spy_code_int64()*8]);
 				break;
 
 			/* LEA */
@@ -898,7 +906,7 @@ spy_execute(const char* filename) {
 
 			/* FARG */
 			case 0x55:
-				spy_push_float(spy, *(spy_float *)&spy->bp[-3*8 - spy_code_int64()]);
+				spy_push_float(spy, *(spy_float *)&spy->bp[-3*8 - spy_code_int64()*8]);
 				break;
 
 			/* ITOF */
@@ -915,6 +923,14 @@ spy_execute(const char* filename) {
 			case 0x58:
 				spy_push_int(spy, spy_top_int(spy));
 				break;
+
+			/* FSAVE */
+			case 0x59: {
+				spy_float value = spy_pop_float(spy);
+				spy_int addr = spy_pop_int(spy);
+				spy_save_float(spy, addr, value);	
+				break;
+			}
 
 			/* ILOG */
 			case 0xFD:

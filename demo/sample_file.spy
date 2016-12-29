@@ -1,15 +1,26 @@
-struct Example {
-	field: int;
-	field2: int;
-};	
+struct Vector {
+	x: float;
+	y: float;
+};
+
+struct Circle {
+	position: Vector;
+	velocity: Vector;
+	radius: float;
+};
 
 main: () -> void {
 
-	foo: Example;
+	foo: Circle;
 	
-	while (1 == 1) {
-		bar: int;
-		foo.field = bar = 10;
-	}
+	foo.position.x = 10.0;
+	foo.position.y = 20.0;
+	foo.velocity.x = 0.0;
+	foo.velocity.y = 0.0 - 0.5;
+	foo.radius = 30.0;
+	
+	while (foo.position.y + foo.radius/2.0 > 0.0) {
+		foo.position.y += foo.velocity.y;
+	}	
 	
 }

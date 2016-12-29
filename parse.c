@@ -1376,9 +1376,15 @@ generate_syntax_tree(TokenList* tokens) {
 		} else if (matches_declaration(P)) {
 			VarDeclaration* var = parse_declaration(P);
 			var->offset = P->current_offset;
-			P->current_offset += var->datatype->size;
+			unsigned int inc = var->datatype->size;
+			if (var->datatype->type == DATA_STRUCT && var->datatype->ptr_dim == 0) {
+				/* an extra 8 bytes are needed for a struct because it is implemented
+				 * on the stack with a pointer */
+				inc += 8;
+			}
+			P->current_offset += inc;
 			if (P->current_function) {
-				P->current_function->funcval->desc->stack_space += var->datatype->size;
+				P->current_function->funcval->desc->stack_space += inc;
 			}
 			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
 

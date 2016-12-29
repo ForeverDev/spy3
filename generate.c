@@ -230,6 +230,19 @@ advance(CompileState* C) {
 	return 0;
 }
 
+/* t is a bval node */
+#define IS_ASSIGN(t) ((t)->optype == '=' || \
+					  (t)->optype == SPEC_INC_BY || \
+					  (t)->optype == SPEC_DEC_BY || \
+					  (t)->optype == SPEC_MUL_BY || \
+					  (t)->optype == SPEC_DIV_BY || \
+					  (t)->optype == SPEC_MOD_BY || \
+					  (t)->optype == SPEC_SHL_BY || \
+					  (t)->optype == SPEC_SHR_BY || \
+					  (t)->optype == SPEC_AND_BY || \
+					  (t)->optype == SPEC_OR_BY || \
+					  (t)->optype == SPEC_XOR_BY)
+
 static void
 generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
@@ -237,7 +250,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	int dont_der = (
 		exp->parent != NULL &&
 		exp->parent->type == EXP_BINARY &&
-		exp->parent->bval->optype == '=' &&
+		IS_ASSIGN(exp->parent->bval) &&
 		exp->side == LEAF_LEFT
 	);
 	switch (exp->type) {
@@ -264,17 +277,16 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			ExpNode* lhs = exp->bval->left;
 			ExpNode* rhs = exp->bval->right;
 			if (exp->bval->optype == '.') {
-				int is_bottom = !(
-					exp->parent &&
-					exp->parent->type == EXP_BINARY &&
-					exp->parent->bval->optype == '.'
-				);
+				int is_bottom = lhs->type == EXP_IDENTIFIER;
 				generate_expression(C, exp->bval->left);				
 				if (is_bottom) {
 					VarDeclaration* obj = get_local(C, lhs->sval);
 					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
 					/* call to generate made lea, now add offset */
 					writeb(C, "iinc %d\n", field->offset);	
+				}
+				if (!dont_der) {
+					writeb(C, "%cder\n", get_prefix(exp->eval));	
 				}
 			} else if (exp->bval->optype == '=') {
 				generate_expression(C, lhs);
@@ -283,6 +295,46 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					writeb(C, "dup\n");
 				}
 				writeb(C, "%csave\n", get_prefix(lhs->eval)); 
+			} else if (IS_ASSIGN(exp->bval)) {
+				char lp = get_prefix(lhs->eval);
+				generate_expression(C, lhs);
+				writeb(C, "dup\n");
+				writeb(C, "%cder\n", lp);
+				generate_expression(C, rhs);
+				switch (exp->bval->optype) {
+					case SPEC_INC_BY:
+						writeb(C, "%cadd\n", lp);
+						break;
+					case SPEC_DEC_BY:
+						writeb(C, "%csub\n", lp);
+						break;
+					case SPEC_MUL_BY:
+						writeb(C, "%cmul\n", lp);
+						break;
+					case SPEC_DIV_BY:
+						writeb(C, "%cdiv\n", lp);
+						break;
+					case SPEC_MOD_BY:
+						writeb(C, "mod\n");
+						break;
+					case SPEC_SHL_BY:
+						writeb(C, "shl\n");
+						break;
+					case SPEC_SHR_BY:
+						writeb(C, "shr\n");
+						break;
+					case SPEC_AND_BY:
+						writeb(C, "and\n");
+						break;
+					case SPEC_OR_BY:
+						writeb(C, "or\n");
+						break;
+					case SPEC_XOR_BY:
+						writeb(C, "xor\n");
+						break;
+
+				}
+				writeb(C, "%csave\n", lp);
 			} else { 
 				generate_expression(C, lhs);
 				generate_expression(C, rhs);
@@ -364,7 +416,7 @@ generate_function(CompileState* C) {
 		writeb(C, "%carg %d\n", get_prefix(i->data), index++);
 	}
 	pushb(C, FORMAT_DEF_LABEL, C->return_label);
-	pushb(C, "iret\n");
+	pushb(C, "vret\n");
 }
 
 static void
@@ -373,7 +425,7 @@ initialize_local(CompileState* C, VarDeclaration* var) {
 	writeb(C, "; initialize '%s'\n", var->name);
 	if (var->datatype->type == DATA_STRUCT && !is_ptr) {
 		/* if it's a struct, initialize it as a pointer to stack space */
-		writeb(C, "lea %d\n", var->offset);
+		writeb(C, "lea %d\n", var->offset + 8);
 	} else {
 		writeb(C, "iconst 0\n");
 	}
@@ -401,6 +453,8 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 		fclose(C.handle);
 		return;
 	}
+
+	writeb(&C, "jmp __ENTRY__\n");
 	
 	do {
 		switch (C.focus->type) {
@@ -428,6 +482,8 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 		popb(&C);
 	}
 	
+	writeb(&C, "__ENTRY__:\n");	
+	writeb(&C, "call __Fmain__, 0\n");
 	writeb(&C, "exit\n");
 
 	fclose(C.handle);
