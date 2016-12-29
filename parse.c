@@ -730,6 +730,9 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			}
 			return exp->eval = var->datatype;
 		}
+		case EXP_CALL:
+			
+			break;
 		case EXP_BINARY: {
 			switch (exp->bval->optype) {
 				case '.': {
@@ -1042,11 +1045,8 @@ parse_expression(ParseState* P) {
 				leaf[j]->side = j == 1 ? LEAF_LEFT : LEAF_RIGHT;
 			}
 			/* swap order */
-			if (at->type == EXP_BINARY) {
-				at->bval->left = leaf[1];
-				at->bval->right = leaf[0];
-				break;
-			}
+			at->bval->left = leaf[1];
+			at->bval->right = leaf[0];
 			/* throw the branch back onto the stack */
 			expstack_push(&tree, at);
 		}

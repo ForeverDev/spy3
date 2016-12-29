@@ -1,15 +1,19 @@
 struct Bar {
-	function: int;
+	function: () -> void;
 };
 
 struct Foo {
 	thing: Bar;
 };
 
+test: () -> void {
+
+}
+
 main: () -> void {
 
 	meme: Foo;
 
-	meme.thing.function = 10;
+	meme.thing.function(10);
 	
 }
