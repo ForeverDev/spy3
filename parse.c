@@ -56,7 +56,6 @@ static int on_ident(ParseState*, const char*);
 static int on_op(ParseState*, char);
 
 /* misc */
-static void print_expression(ExpNode*, int);
 static void print_tree(TreeNode*, int);
 static void print_datatype(Datatype*, int);
 static void parse_die(ParseState*, const char*, ...);
@@ -421,7 +420,7 @@ print_tree(TreeNode* tree, int indent) {
 	}
 }
 
-static void
+void
 print_expression(ExpNode* exp, int indent) {
 	if (!exp) return;
 	INDENT(indent);
@@ -661,6 +660,19 @@ find_field(const TreeStruct* str, const char* name) {
 	return NULL;
 }
 
+static FunctionDescriptor*
+find_function(ParseState* P, const char* name) {
+	for (TreeNode* i = P->root_node->blockval->child; i; i = i->next) {
+		if (i->type != NODE_FUNC_IMPL) {
+			continue;
+		}
+		if (!strcmp(i->funcval->name, name)) {
+			return i->funcval->desc;
+		}
+	}
+	return NULL;
+}
+
 static VarDeclaration*
 find_local(ParseState* P, const char* name) {
 	for (TreeNode* i = P->current_block; i; i = i->parent) {
@@ -730,9 +742,65 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			}
 			return exp->eval = var->datatype;
 		}
-		case EXP_CALL:
+		case EXP_CALL: {
+			FunctionDescriptor* desc = NULL;
+			const char* func_id = NULL;
+					
+			/* we need to find the proper function descriptor and assign it
+			 * to desc... we can use the computed flag to determine if the
+			 * function is simply a local or if it is a variable/struct member */
+
+			if (exp->cval->computed) {
+				const Datatype* lhs = typecheck_expression(P, exp->cval->fptr);
+				if (lhs->type != DATA_FPTR) {
+					parse_die(P, "attempt to call a non-function (evaluated to '%s')", tostring_datatype(lhs));
+				}
+				desc = lhs->fdesc;
+			} else {
+				func_id = exp->cval->fptr->sval;
+				desc = find_function(P, func_id);	
+				if (!desc) {
+					/* not a global function? maybe its a simple id pointer */
+					VarDeclaration* var = find_local(P, func_id);
+					if (var && var->datatype->type == DATA_FPTR) {
+						desc = var->datatype->fdesc;	
+					}
+				}
+				if (!desc) {
+					parse_die(P, "function '%s' does not exist", func_id);
+				}
+			}
+
+			unsigned int call_args = 0;
 			
-			break;
+			/* call_args = num_of_commas + 1 (unless arguments == NULL, then 0) */
+			ExpNode* arg = exp->cval->arguments;
+			if (arg) call_args++;
+			while (arg && arg->type == EXP_BINARY && arg->bval->optype == ',') {
+				call_args++;
+				arg = arg->bval->left;
+			}
+			
+			/* make sure number of args is correct */
+			if (call_args != desc->nargs) {
+				if (func_id) {
+					parse_die(P,
+						"incorrect number of arguments passed to function '%s'; expected %d, got %d",
+						func_id,
+						desc->nargs,
+						call_args
+					);
+				} else {
+					parse_die(P,
+						"incorrect number of arguments passed to function; expected %d, got %d",
+						desc->nargs,
+						call_args
+					);
+				}
+			}
+
+			return exp->eval = desc->return_type;
+		}
 		case EXP_BINARY: {
 			switch (exp->bval->optype) {
 				case '.': {
@@ -874,7 +942,9 @@ parse_expression(ParseState* P) {
 			push->cval = malloc(sizeof(FuncCall));
 			push->cval->fptr = NULL;
 			push->cval->arguments = parse_expression(P);
-			push->cval->arguments->parent = push;
+			if (push->cval->arguments) {
+				push->cval->arguments->parent = push;
+			}
 			push->cval->computed = 0;
 			/* revert mark */
 			P->marked = marksave;
@@ -1021,8 +1091,9 @@ parse_expression(ParseState* P) {
 			expstack_push(&tree, at);	
 		} else if (at->type == EXP_CALL) {
 			at->cval->fptr = expstack_pop(&tree);
-			if (at->cval->fptr->type != EXP_IDENTIFIER) {
-				at->cval->computed = 1;
+			at->cval->computed = 1; /* assume computed at first */
+			if (at->cval->fptr->type == EXP_IDENTIFIER && find_function(P, at->cval->fptr->sval)) {
+				at->cval->computed = 0;
 			}
 			expstack_push(&tree, at);
 		} else if (at->type == EXP_UNARY) {
@@ -1174,6 +1245,7 @@ parse_datatype(ParseState* P) {
 		data->type = DATA_FPTR;	
 
 		data->fdesc = parse_function_descriptor(P);
+		data->size = 8;
 	} else {
 		/* not function... primitive type or struct (struct not handeled yet) */
 		if (on_ident(P, "int")) {
@@ -1433,10 +1505,6 @@ generate_syntax_tree(TokenList* tokens) {
 				 * on the stack with a pointer */
 				inc += 8;
 			}
-			P->current_offset += inc;
-			if (P->current_function) {
-				P->current_function->funcval->desc->stack_space += inc;
-			}
 			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
 
 				/* make sure it's in global scope */
@@ -1472,6 +1540,10 @@ generate_syntax_tree(TokenList* tokens) {
 			} else {
 				register_local(P, var);
 				eat_operator(P, ';');
+				P->current_offset += inc;
+				if (P->current_function) {
+					P->current_function->funcval->desc->stack_space += inc;
+				}
 			}
 		} else if (on_op(P, '{')) {
 			parse_block(P);
@@ -1488,7 +1560,7 @@ generate_syntax_tree(TokenList* tokens) {
 	if (P->current_block != P->root_node) {
 		parse_die(P, "expected '}' before EOF");
 	}
-	
+
 	print_debug_info(P);
 
 	/* TODO cleanup tokens + other stuff */

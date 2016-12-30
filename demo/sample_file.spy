@@ -6,14 +6,14 @@ struct Foo {
 	thing: Bar;
 };
 
-test: () -> void {
-
+test: () -> int {
 }
 
 main: () -> void {
-
-	meme: Foo;
-
-	meme.thing.function(10);
+	
+	x: int;
+	foo: () -> int;
+	
+	x = foo() + 13;
 	
 }

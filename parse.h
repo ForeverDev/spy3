@@ -240,5 +240,6 @@ struct ParseState {
 
 
 ParseState* generate_syntax_tree(TokenList*);
+void print_expression(ExpNode*, int);
 
 #endif

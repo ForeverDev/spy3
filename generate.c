@@ -207,6 +207,10 @@ static int
 advance(CompileState* C) {
 	TreeNode* focus = C->focus;
 	TreeNode* child;
+	/* if focus is a block without children, pop once */
+	if (focus->type == NODE_BLOCK && !focus->blockval->child) {
+		popb(C);
+	}
 	/* child? jump into it */
 	if ((child = get_child(focus))) {
 		C->focus = child;
@@ -248,7 +252,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
 	int is_top = exp->parent == NULL;
 	int dont_der = (
-		exp->parent != NULL &&
+		exp->parent &&
 		exp->parent->type == EXP_BINARY &&
 		IS_ASSIGN(exp->parent->bval) &&
 		exp->side == LEAF_LEFT
@@ -265,11 +269,27 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			 * identifier that is not a variable... therefore it is safe
 			 * to assume that the get_local result is non-null */
 			VarDeclaration* var = get_local(C, exp->sval);
+
+			/* TODO @ERR get_local doesn not properly return function declarations */
+
 			if (dont_der) {
 				writeb(C, "lea %d\n", var->offset);
 			} else {
 				char prefix = get_prefix(var->datatype);
 				writeb(C, "%clocall %d\n", prefix, var->offset);
+			}
+			break;
+		}
+		case EXP_CALL: {
+			FuncCall* call = exp->cval;
+			if (call->computed) {
+				generate_expression(C, call->fptr);
+			}
+			generate_expression(C, call->arguments);
+			if (call->computed) {
+				writeb(C, "ccall %d\n", call->num_args);
+			} else {
+				writeb(C, "call %s, %d\n", call->fptr->sval, call->num_args);
 			}
 			break;
 		}
@@ -412,7 +432,7 @@ generate_function(CompileState* C) {
 	TreeFunction* func = C->focus->funcval;
 	FunctionDescriptor* desc = func->desc;
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
-	writeb(C, "res %d\n", desc->stack_space);
+	writeb(C, "res %lld\n", desc->stack_space);
 	int index = 0;
 	for (DatatypeList* i = desc->arguments; i; i = i->next) {
 		writeb(C, "%carg %d\n", get_prefix(i->data), index++);
