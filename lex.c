@@ -196,8 +196,6 @@ lex_identifier(LexState* L) {
 static void
 lex_operator(LexState* L) {
 	Token* tok;
-	char ctype;
-	char* start = L->contents;
 	const TokenListing* found = NULL;
 	for (const TokenListing* i = token_listing; i->word; i++) {
 		if (!strncmp(L->contents, i->word, strlen(i->word))) {

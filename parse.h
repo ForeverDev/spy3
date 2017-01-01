@@ -96,6 +96,7 @@ struct ExpNode {
 struct FunctionDescriptor {
 	unsigned int nargs;
 	unsigned int stack_space;
+	unsigned int is_global;
 	DatatypeList* arguments;
 	Datatype* return_type;
 };

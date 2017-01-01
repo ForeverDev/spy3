@@ -1,5 +1,6 @@
 struct Bar {
-	function: () -> void;
+	function: () -> int;
+	field: int;
 };
 
 struct Foo {
@@ -7,13 +8,18 @@ struct Foo {
 };
 
 test: () -> int {
+	
 }
 
 main: () -> void {
 	
-	x: int;
-	foo: () -> int;
+	object: Foo;
 	
-	x = foo() + 13;
+	object.thing.field = 0;
+	object.thing.function = test;
+
+	while (object.thing.field < 1500000) {
+		object.thing.field += 1;
+	}
 	
 }

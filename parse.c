@@ -32,6 +32,8 @@ static void parse_for(ParseState*);
 static void parse_block(ParseState*);
 static void parse_statement(ParseState*);
 static void parse_struct(ParseState*);
+static void parse_break(ParseState*);
+static void parse_continue(ParseState*);
 static VarDeclaration* parse_declaration(ParseState*);
 static ExpNode* parse_expression(ParseState*);
 static FunctionDescriptor* parse_function_descriptor(ParseState*);
@@ -311,6 +313,12 @@ print_tree(TreeNode* tree, int indent) {
 	};
 	INDENT(indent);
 	switch (tree->type) {
+		case NODE_CONTINUE:
+			printf("CONTINUE\n");
+			break;
+		case NODE_BREAK:
+			printf("BREAK\n");
+			break;
 		case NODE_BLOCK:
 			printf("BLOCK: [\n");
 			INDENT(indent + 1);
@@ -718,6 +726,25 @@ types_match(const Datatype* a, const Datatype* b) {
 	}
 	if (a->ptr_dim != b->ptr_dim) {
 		return 0;
+	}
+	if (a->type == DATA_FPTR) {
+		FunctionDescriptor* da = a->fdesc;
+		FunctionDescriptor* db = b->fdesc;
+		if (da->nargs != db->nargs) {
+			return 0;
+		}
+		if (!types_match(da->return_type, db->return_type)) {
+			return 0;
+		}
+		DatatypeList* aa = da->arguments;
+		DatatypeList* ab = db->arguments;
+		while (aa) {
+			if (!types_match(aa->data, ab->data)) {
+				return 0;
+			}
+			aa = aa->next;
+			ab = ab->next;
+		}
 	}
 	return 1;
 }
@@ -1143,6 +1170,28 @@ jump_out(ParseState* P) {
 }
 
 static void
+parse_break(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_BREAK;
+
+	P->tokens = P->tokens->next;
+	eat_operator(P, ';');
+
+	append_node(P, node);
+}
+
+static void
+parse_continue(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_CONTINUE;
+
+	P->tokens = P->tokens->next;
+	eat_operator(P, ';');
+
+	append_node(P, node);
+}
+
+static void
 parse_block(ParseState* P) {
 	TreeNode* node = malloc(sizeof(TreeNode));
 	node->type = NODE_BLOCK;
@@ -1167,6 +1216,7 @@ parse_function_descriptor(ParseState* P) {
 	fdesc->return_type = NULL;
 	fdesc->nargs = 0;
 	fdesc->stack_space = 0;
+	fdesc->is_global = 0;
 
 	P->tokens = P->tokens->next; /* skip ( */
 	
@@ -1496,6 +1546,10 @@ generate_syntax_tree(TokenList* tokens) {
 			parse_for(P);
 		} else if (on_ident(P, "struct")) {
 			parse_struct(P);
+		} else if (on_ident(P, "break")) {
+			parse_break(P);
+		} else if (on_ident(P, "continue")) {
+			parse_continue(P);
 		} else if (matches_declaration(P)) {
 			VarDeclaration* var = parse_declaration(P);
 			var->offset = P->current_offset;
@@ -1506,6 +1560,8 @@ generate_syntax_tree(TokenList* tokens) {
 				inc += 8;
 			}
 			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
+
+				var->datatype->fdesc->is_global = 1;
 
 				/* make sure it's in global scope */
 				if (P->current_block != P->root_node) {
@@ -1530,11 +1586,10 @@ generate_syntax_tree(TokenList* tokens) {
 				node->funcval = malloc(sizeof(TreeFunction));
 				node->funcval->desc = var->datatype->fdesc;
 				node->funcval->name = var->name;
+
+				/* also append it as a var so that it can be referenced */
+				register_local(P, var);
 				
-				/* no need for declaration anymore, free it.
-				 *
-				 * **NOTE** name and descriptor not freed */	
-				free(var);
 
 				append_node(P, node);
 			} else {

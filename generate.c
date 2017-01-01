@@ -23,6 +23,8 @@ struct CompileState {
 	TreeStructList* defined_structs;
 	unsigned int label_count;
 	unsigned int return_label;
+	unsigned int cont_label;
+	unsigned int break_label;
 	FILE* handle;
 };
 
@@ -251,12 +253,23 @@ static void
 generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
 	int is_top = exp->parent == NULL;
+	int is_assign = exp->parent ? IS_ASSIGN(exp->parent->bval) : 0;
 	int dont_der = (
 		exp->parent &&
 		exp->parent->type == EXP_BINARY &&
 		IS_ASSIGN(exp->parent->bval) &&
 		exp->side == LEAF_LEFT
 	);
+	/* don't dereference dot chain on left side of assignment operator */
+	if (exp->parent && exp->parent->type == EXP_BINARY && exp->parent->bval->optype == '.' && exp->side == LEAF_LEFT) {
+		ExpNode* scan = exp->parent;
+		while (scan && scan->type == EXP_BINARY && scan->bval->optype == '.') {
+			scan = scan->parent;
+		}
+		if (scan && scan->type == EXP_BINARY && IS_ASSIGN(scan->bval)) {
+			dont_der = 1;
+		}
+	}
 	switch (exp->type) {
 		case EXP_INTEGER:
 			writeb(C, "iconst %d\n", exp->ival);
@@ -271,8 +284,11 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			VarDeclaration* var = get_local(C, exp->sval);
 
 			/* TODO @ERR get_local doesn not properly return function declarations */
-
-			if (dont_der) {
+			
+			if (var->datatype->type == DATA_FPTR && var->datatype->fdesc->is_global) {
+				writeb(C, "iconst " FORMAT_FUNC "\n", var->name);
+			} else if (dont_der && var->datatype->type != DATA_STRUCT) {
+				/* structs are pointers, use locall */
 				writeb(C, "lea %d\n", var->offset);
 			} else {
 				char prefix = get_prefix(var->datatype);
@@ -304,8 +320,13 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
 					/* call to generate made lea, now add offset */
 					writeb(C, "iinc %d\n", field->offset);	
+				} else {
+					/* if it's a chain (not at the bottom), grab the field from the eval
+					 * instead of finding the struct from its identifier */
+					VarDeclaration* field = get_field(lhs->eval->sdesc, rhs->sval);
+					writeb(C, "iinc %d\n", field->offset);	
 				}
-				if (!dont_der) {
+				if (!is_assign) {
 					writeb(C, "%cder\n", get_prefix(exp->eval));	
 				}
 			} else if (exp->bval->optype == '=') {
@@ -318,6 +339,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			} else if (IS_ASSIGN(exp->bval)) {
 				char lp = get_prefix(lhs->eval);
 				generate_expression(C, lhs);
+				writeb(C, "dup\n");
 				writeb(C, "%cder\n", lp);
 				generate_expression(C, rhs);
 				switch (exp->bval->optype) {
@@ -408,6 +430,16 @@ generate_expression(CompileState* C, ExpNode* exp) {
 }
 
 static void
+generate_break(CompileState* C) {
+	writeb(C, "jmp " FORMAT_LABEL "\n", C->break_label);
+}
+
+static void
+generate_continue(CompileState* C) {
+	writeb(C, "jmp " FORMAT_LABEL "\n", C->cont_label);
+}
+
+static void
 generate_if(CompileState* C) {
 	unsigned int test_neg = C->label_count++;
 	generate_expression(C, C->focus->ifval->condition);
@@ -419,6 +451,8 @@ static void
 generate_while(CompileState* C) {
 	unsigned int top = C->label_count++;
 	unsigned int test_neg = C->label_count++;
+	C->cont_label = top;
+	C->break_label = test_neg;
 	writeb(C, FORMAT_DEF_LABEL, top);
 	generate_expression(C, C->focus->whileval->condition);
 	writeb(C, "jz " FORMAT_LABEL "\n", test_neg);
@@ -432,7 +466,7 @@ generate_function(CompileState* C) {
 	TreeFunction* func = C->focus->funcval;
 	FunctionDescriptor* desc = func->desc;
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
-	writeb(C, "res %lld\n", desc->stack_space);
+	writeb(C, "res %d\n", desc->stack_space);
 	int index = 0;
 	for (DatatypeList* i = desc->arguments; i; i = i->next) {
 		writeb(C, "%carg %d\n", get_prefix(i->data), index++);
@@ -470,6 +504,8 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	C.focus = C.root_node;
 	C.ins_stack = NULL;
 	C.label_count = 0;
+	C.cont_label = 0;
+	C.break_label = 0;
 
 	if (!C.root_node) {
 		fclose(C.handle);
@@ -491,6 +527,12 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 				break;
 			case NODE_STATEMENT:
 				generate_expression(&C, C.focus->stateval->exp);
+				break;
+			case NODE_BREAK:
+				generate_break(&C);
+				break;
+			case NODE_CONTINUE:
+				generate_continue(&C);
 				break;
 			case NODE_BLOCK:
 				for (VarDeclarationList* i = C.focus->blockval->locals; i; i = i->next) {
