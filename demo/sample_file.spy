@@ -1,25 +1,13 @@
-struct Bar {
-	function: () -> int;
-	field: int;
-};
-
-struct Foo {
-	thing: Bar;
-};
-
-test: () -> int {
-	
+factorial: (n: int) -> int {
+	if (n <= 1)
+		return 1;
+	return n * factorial(n - 1);
 }
 
 main: () -> void {
-	
-	object: Foo;
-	
-	object.thing.field = 0;
-	object.thing.function = test;
 
-	while (object.thing.field < 1500000) {
-		object.thing.field += 1;
-	}
+	thing: int;
+	
+	thing = factorial(6);	
 	
 }

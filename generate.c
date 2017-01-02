@@ -4,7 +4,7 @@
 #include <stdarg.h>
 #include "generate.h"
 
-#define FORMAT_LABEL "__L%04d__"
+#define FORMAT_LABEL ".L%d"
 #define FORMAT_FUNC  "__F%s__"
 
 #define FORMAT_DEF_FUNC FORMAT_FUNC ":\n"
@@ -19,12 +19,15 @@ typedef struct LiteralList LiteralList;
 struct CompileState {
 	TreeNode* focus;
 	TreeNode* root_node;
+	TreeNode* current_function;
 	InstructionStack* ins_stack;
 	TreeStructList* defined_structs;
 	unsigned int label_count;
 	unsigned int return_label;
 	unsigned int cont_label;
 	unsigned int break_label;
+	int exp_push; /* which writer function for generate_expression to use */
+	int cond_jmp; /* if 1, generate_expression will jump to break_label with a top-level comparison */
 	FILE* handle;
 };
 
@@ -43,7 +46,13 @@ struct InstructionStack {
 /* generate functions */
 static void generate_expression(CompileState*, ExpNode*);
 static void generate_if(CompileState*);
-static void generate_function(CompileState*);
+static void generate_functtion(CompileState*);
+static void generate_while(CompileState*);
+static void generate_for(CompileState*);
+static void generate_condition(CompileState*, ExpNode*);
+static void generate_continue(CompileState*);
+static void generate_break(CompileState*);
+static void generate_return(CompileState*);
 static void initialize_local(CompileState*, VarDeclaration*);
 
 /* misc function */
@@ -183,6 +192,13 @@ get_local(CompileState* C, const char* identifier) {
 			}
 		}
 	}
+	if (C->current_function) {
+		for (VarDeclarationList* i = C->current_function->funcval->desc->arguments; i; i = i->next) {
+			if (!strcmp(i->decl->name, identifier)) {
+				return i->decl;
+			}
+		}
+	}
 	return NULL;
 }
 
@@ -224,7 +240,6 @@ advance(CompileState* C) {
 		return 1;
 	}
 	/* parent->next? */
-	C->focus = focus->parent;
 	while (C->focus) {
 		if (C->focus->next) {
 			C->focus = C->focus->next;
@@ -249,9 +264,22 @@ advance(CompileState* C) {
 					  (t)->optype == SPEC_OR_BY || \
 					  (t)->optype == SPEC_XOR_BY)
 
+#define IS_COMPARE(t) ((t)->type == EXP_BINARY && \
+						( \
+							(t)->bval->optype == '>' || \
+							(t)->bval->optype == '<' || \
+							(t)->bval->optype == SPEC_GE || \
+							(t)->bval->optype == SPEC_LE || \
+							(t)->bval->optype == SPEC_EQ || \
+							(t)->bval->optype == SPEC_NEQ \
+						) \
+					)
+
+
 static void
 generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
+	void (*writer)(CompileState*, const char*, ...) = C->exp_push ? pushb : writeb;
 	int is_top = exp->parent == NULL;
 	int is_assign = exp->parent ? IS_ASSIGN(exp->parent->bval) : 0;
 	int dont_der = (
@@ -272,27 +300,22 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	}
 	switch (exp->type) {
 		case EXP_INTEGER:
-			writeb(C, "iconst %d\n", exp->ival);
+			writer(C, "iconst %d\n", exp->ival);
 			break;
 		case EXP_FLOAT:
-			writeb(C, "fconst %f\n", exp->fval);
+			writer(C, "fconst %f\n", exp->fval);
 			break;
 		case EXP_IDENTIFIER: {
-			/* NOTE generate_expression will __never__ be called on an
-			 * identifier that is not a variable... therefore it is safe
-			 * to assume that the get_local result is non-null */
 			VarDeclaration* var = get_local(C, exp->sval);
 
-			/* TODO @ERR get_local doesn not properly return function declarations */
-			
 			if (var->datatype->type == DATA_FPTR && var->datatype->fdesc->is_global) {
-				writeb(C, "iconst " FORMAT_FUNC "\n", var->name);
+				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
 			} else if (dont_der && var->datatype->type != DATA_STRUCT) {
 				/* structs are pointers, use locall */
-				writeb(C, "lea %d\n", var->offset);
+				writer(C, "lea %d\n", var->offset);
 			} else {
 				char prefix = get_prefix(var->datatype);
-				writeb(C, "%clocall %d\n", prefix, var->offset);
+				writer(C, "%clocall %d\n", prefix, var->offset);
 			}
 			break;
 		}
@@ -303,9 +326,9 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			}
 			generate_expression(C, call->arguments);
 			if (call->computed) {
-				writeb(C, "ccall %d\n", call->num_args);
+				writer(C, "ccall %d\n", call->num_args);
 			} else {
-				writeb(C, "call %s, %d\n", call->fptr->sval, call->num_args);
+				writer(C, "call " FORMAT_FUNC ", %d\n", call->fptr->sval, call->num_args);
 			}
 			break;
 		}
@@ -319,105 +342,122 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					VarDeclaration* obj = get_local(C, lhs->sval);
 					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
 					/* call to generate made lea, now add offset */
-					writeb(C, "iinc %d\n", field->offset);	
+					writer(C, "iinc %d\n", field->offset);	
 				} else {
 					/* if it's a chain (not at the bottom), grab the field from the eval
 					 * instead of finding the struct from its identifier */
 					VarDeclaration* field = get_field(lhs->eval->sdesc, rhs->sval);
-					writeb(C, "iinc %d\n", field->offset);	
+					writer(C, "iinc %d\n", field->offset);	
 				}
 				if (!is_assign) {
-					writeb(C, "%cder\n", get_prefix(exp->eval));	
+					writer(C, "%cder\n", get_prefix(exp->eval));	
 				}
 			} else if (exp->bval->optype == '=') {
 				generate_expression(C, lhs);
 				generate_expression(C, rhs);
 				if (!is_top) {
-					writeb(C, "dup\n");
+					writer(C, "dup\n");
 				}
-				writeb(C, "%csave\n", get_prefix(lhs->eval)); 
+				writer(C, "%csave\n", get_prefix(lhs->eval)); 
 			} else if (IS_ASSIGN(exp->bval)) {
 				char lp = get_prefix(lhs->eval);
 				generate_expression(C, lhs);
-				writeb(C, "dup\n");
-				writeb(C, "%cder\n", lp);
+				writer(C, "dup\n");
+				writer(C, "%cder\n", lp);
 				generate_expression(C, rhs);
 				switch (exp->bval->optype) {
 					case SPEC_INC_BY:
-						writeb(C, "%cadd\n", lp);
+						writer(C, "%cadd\n", lp);
 						break;
 					case SPEC_DEC_BY:
-						writeb(C, "%csub\n", lp);
+						writer(C, "%csub\n", lp);
 						break;
 					case SPEC_MUL_BY:
-						writeb(C, "%cmul\n", lp);
+						writer(C, "%cmul\n", lp);
 						break;
 					case SPEC_DIV_BY:
-						writeb(C, "%cdiv\n", lp);
+						writer(C, "%cdiv\n", lp);
 						break;
 					case SPEC_MOD_BY:
-						writeb(C, "mod\n");
+						writer(C, "mod\n");
 						break;
 					case SPEC_SHL_BY:
-						writeb(C, "shl\n");
+						writer(C, "shl\n");
 						break;
 					case SPEC_SHR_BY:
-						writeb(C, "shr\n");
+						writer(C, "shr\n");
 						break;
 					case SPEC_AND_BY:
-						writeb(C, "and\n");
+						writer(C, "and\n");
 						break;
 					case SPEC_OR_BY:
-						writeb(C, "or\n");
+						writer(C, "or\n");
 						break;
 					case SPEC_XOR_BY:
-						writeb(C, "xor\n");
+						writer(C, "xor\n");
 						break;
 
 				}
 				if (!is_top) {
-					writeb(C, "dup\n");
+					writer(C, "dup\n");
 				}
-				writeb(C, "%csave\n", lp);
+				writer(C, "%csave\n", lp);
 			} else { 
 				generate_expression(C, lhs);
 				generate_expression(C, rhs);
 				char prefix = get_prefix(exp->eval);
 				switch (exp->bval->optype) {
 					case '+':
-						writeb(C, "%cadd", prefix);	
+						writer(C, "%cadd", prefix);	
 						break;
 					case '-':
-						writeb(C, "%csub", prefix);	
+						writer(C, "%csub", prefix);	
 						break;
 					case '*':
-						writeb(C, "%cmul", prefix);	
+						writer(C, "%cmul", prefix);	
 						break;
 					case '/':
-						writeb(C, "%cdiv", prefix);	
+						writer(C, "%cdiv", prefix);	
+						break;
+					case SPEC_SHL:
+						writer(C, "shl");
+						break;
+					case SPEC_SHR:
+						writer(C, "shr");
+						break;
+					case '%':
+						writer(C, "mod");
 						break;
 					
 					/* TODO implement top-level jump for comparison operators */
 					case '>':
-						writeb(C, "%ccmp\npgt\n%ctest", prefix, prefix);
-						break;
 					case '<':
-						writeb(C, "%ccmp\nplt\n%ctest", prefix, prefix);
-						break;
 					case SPEC_GE:
-						writeb(C, "%ccmp\npge\n%ctest", prefix, prefix);
-						break;
 					case SPEC_LE:
-						writeb(C, "%ccmp\nple\n%ctest", prefix, prefix);
-						break;
 					case SPEC_EQ:
-						writeb(C, "%ccmp\npe\n%ctest", prefix, prefix);
+					case SPEC_NEQ: {
+						char op = exp->bval->optype;
+						/* ins is inverted! */
+						const char* ins = (
+							op == '>' ? "le" :
+							op == '<' ? "ge" :
+							op == SPEC_GE ? "lt" :
+							op == SPEC_LE ? "gt" :
+							op == SPEC_EQ ? "ne" : "e"	
+						);	
+						writer(C, "%ccmp\n", prefix);
+						if (C->cond_jmp && is_top) {
+							/* if it's a conditional expression and the cond operator is at
+							 * the top of the tree, a simple conditional jump can be generated */
+							writer(C, "j%s " FORMAT_LABEL, ins, C->break_label);
+						} else {
+							writer(C, "p%s\n", ins);
+							writer(C, "%ctest", prefix); 
+						}
 						break;
-					case SPEC_NEQ:
-						writeb(C, "%ccmp\npne\n%ctest", prefix, prefix);
-						break;
+					}
 				}
-				writeb(C, "\n");
+				writer(C, "\n");
 			}
 			break;
 		}
@@ -440,52 +480,115 @@ generate_continue(CompileState* C) {
 }
 
 static void
+generate_return(CompileState* C) {
+	generate_expression(C, C->focus->stateval->exp);
+	writeb(C, "jmp " FORMAT_LABEL "\n", C->return_label);
+}
+
+/* helper function for while, if, for */
+static void
+generate_condition(CompileState* C, ExpNode* condition) {
+	if (condition) {
+		C->cond_jmp = 1;
+		print_expression(condition, 0);
+		generate_expression(C, condition);
+		C->cond_jmp = 0;
+		if (!IS_COMPARE(condition)) {
+			writeb(C, "%ctest\n", get_prefix(condition->eval));
+			writeb(C, "jz " FORMAT_LABEL "\n", C->break_label);
+		}
+	} else {
+		writeb(C, "iconst 0\n");
+		writeb(C, "itest\n");
+	}
+}
+
+static void
 generate_if(CompileState* C) {
-	unsigned int test_neg = C->label_count++;
-	generate_expression(C, C->focus->ifval->condition);
-	writeb(C, "jz " FORMAT_LABEL "\n", test_neg);
-	pushb(C, FORMAT_DEF_LABEL, test_neg);	
+	C->break_label = C->label_count++;
+	generate_condition(C, C->focus->ifval->condition);
+	pushb(C, FORMAT_DEF_LABEL, C->break_label);	
 }
 
 static void
 generate_while(CompileState* C) {
-	unsigned int top = C->label_count++;
-	unsigned int test_neg = C->label_count++;
-	C->cont_label = top;
-	C->break_label = test_neg;
-	writeb(C, FORMAT_DEF_LABEL, top);
-	generate_expression(C, C->focus->whileval->condition);
-	writeb(C, "jz " FORMAT_LABEL "\n", test_neg);
-	pushb(C, "jmp " FORMAT_LABEL "\n", top);
-	pushb(C, FORMAT_DEF_LABEL, test_neg);
+	C->cont_label = C->label_count++;
+	C->break_label = C->label_count++;
+	writeb(C, FORMAT_DEF_LABEL, C->cont_label);
+	generate_condition(C, C->focus->whileval->condition);
+	pushb(C, "jmp " FORMAT_LABEL "\n", C->cont_label);
+	pushb(C, FORMAT_DEF_LABEL, C->break_label);
+}
+
+static void
+generate_for(CompileState* C) {
+	C->cont_label = C->label_count++;
+	C->break_label = C->label_count++;
+	generate_expression(C, C->focus->forval->init);
+	writeb(C, FORMAT_DEF_LABEL, C->cont_label);
+	generate_condition(C, C->focus->forval->condition);
+	C->exp_push = 1;
+	generate_expression(C, C->focus->forval->statement);	
+	C->exp_push = 0;	
+	pushb(C, "jmp " FORMAT_LABEL "\n", C->cont_label);
+	pushb(C, FORMAT_DEF_LABEL, C->break_label);
 }
 
 static void
 generate_function(CompileState* C) {
+	C->current_function = C->focus;
+	C->label_count = 0; /* reset label count, local labels are used */
 	C->return_label = C->label_count++;
+
+	/* todo make this debug less nasty */
+	Datatype* d = malloc(sizeof(Datatype));
+	d->type = DATA_FPTR;
+	d->fdesc = C->focus->funcval->desc; 
+	d->array_dim = 0;
+	d->ptr_dim = 0;
+	char* header = tostring_datatype(d);
+	writeb(C, "\n; %s: ", C->focus->funcval->name);
+	writeb(C, header);
+	writeb(C, "\n");
+	free(d);
+	free(header);
+	writeb(C, "; return label is " FORMAT_LABEL "\n", C->return_label);
+
 	TreeFunction* func = C->focus->funcval;
 	FunctionDescriptor* desc = func->desc;
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
-	writeb(C, "res %d\n", desc->stack_space);
 	int index = 0;
-	for (DatatypeList* i = desc->arguments; i; i = i->next) {
-		writeb(C, "%carg %d\n", get_prefix(i->data), index++);
+	for (VarDeclarationList* i = desc->arguments; i; i = i->next) {
+		writeb(C, "%carg %d\n", get_prefix(i->decl->datatype), index++);
 	}
+	writeb(C, "res %d\n", desc->stack_space);
 	pushb(C, FORMAT_DEF_LABEL, C->return_label);
-	pushb(C, "vret\n");
+	const Datatype* ret = desc->return_type;
+	if (ret->type == DATA_VOID) {
+		pushb(C, "vret\n");	
+	} else {
+		pushb(C, "%cret\n", get_prefix(ret));
+	}
 }
 
 static void
 initialize_local(CompileState* C, VarDeclaration* var) {
+	/* global functions don't get initialized */
+	Datatype* d = var->datatype;
+	if (d->type == DATA_FPTR && d->fdesc->is_global) {
+		return;
+	}
 	int is_ptr = var->datatype->ptr_dim > 0;
 	writeb(C, "; initialize '%s'\n", var->name);
-	if (var->datatype->type == DATA_STRUCT && !is_ptr) {
+	if (d->type == DATA_STRUCT && !is_ptr) {
 		/* if it's a struct, initialize it as a pointer to stack space */
 		writeb(C, "lea %d\n", var->offset + 8);
 	} else {
+		/* otherwise just initialize it as 0... no need to initialize a float
+		 * differently because a 0 int is a 0 float */
 		writeb(C, "iconst 0\n");
 	}
-	writeb(C, "ilocals %d\n\n", var->offset);
+	writeb(C, "ilocals %d\n", var->offset);
 }
 
 void
@@ -506,6 +609,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	C.label_count = 0;
 	C.cont_label = 0;
 	C.break_label = 0;
+	C.exp_push = 0;
+	C.cond_jmp = 0;
+	C.current_function = NULL;
 
 	if (!C.root_node) {
 		fclose(C.handle);
@@ -522,6 +628,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 			case NODE_WHILE:
 				generate_while(&C);
 				break;
+			case NODE_FOR:
+				generate_for(&C);
+				break;
 			case NODE_FUNC_IMPL:
 				generate_function(&C);
 				break;
@@ -533,6 +642,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 				break;
 			case NODE_CONTINUE:
 				generate_continue(&C);
+				break;
+			case NODE_RETURN:
+				generate_return(&C);
 				break;
 			case NODE_BLOCK:
 				for (VarDeclarationList* i = C.focus->blockval->locals; i; i = i->next) {
@@ -546,7 +658,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 		popb(&C);
 	}
 	
-	writeb(&C, "__ENTRY__:\n");	
+	writeb(&C, "\n__ENTRY__:\n");	
 	writeb(&C, "call __Fmain__, 0\n");
 	writeb(&C, "exit\n");
 

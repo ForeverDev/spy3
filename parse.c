@@ -34,6 +34,7 @@ static void parse_statement(ParseState*);
 static void parse_struct(ParseState*);
 static void parse_break(ParseState*);
 static void parse_continue(ParseState*);
+static void parse_return(ParseState*);
 static VarDeclaration* parse_declaration(ParseState*);
 static ExpNode* parse_expression(ParseState*);
 static FunctionDescriptor* parse_function_descriptor(ParseState*);
@@ -73,7 +74,6 @@ static int types_match(const Datatype*, const Datatype*);
 static TreeStruct* find_struct(ParseState*, const char*);
 static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
-static char* tostring_datatype(const Datatype*);
 static VarDeclaration* find_field(const TreeStruct*, const char*);
 
 static void
@@ -403,8 +403,8 @@ print_tree(TreeNode* tree, int indent) {
 			printf("NAME: %s\n", tree->funcval->name);
 			INDENT(indent + 1);
 			printf("ARGUMENTS: [\n");
-			for (DatatypeList* i = tree->funcval->desc->arguments; i; i = i->next) {
-				print_datatype(i->data, indent + 2);
+			for (VarDeclarationList* i = tree->funcval->desc->arguments; i; i = i->next) {
+				print_datatype(i->decl->datatype, indent + 2);
 			}
 			INDENT(indent + 1);
 			printf("]\n");
@@ -416,6 +416,14 @@ print_tree(TreeNode* tree, int indent) {
 			print_tree(tree->funcval->child, indent + 2);
 			INDENT(indent + 1);
 			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
+		case NODE_RETURN:
+			printf("RETURN [\n");
+			if (tree->stateval) {
+				print_expression(tree->stateval->exp, indent + 1);
+			}
 			INDENT(indent);
 			printf("]\n");
 			break;
@@ -492,8 +500,8 @@ print_datatype(Datatype* data, int indent) {
 			/* print arguments */
 			INDENT(indent + 1);
 			printf("ARGUMENTS: [\n");
-			for (DatatypeList* i = data->fdesc->arguments; i; i = i->next) {
-				print_datatype(i->data, indent + 2);
+			for (VarDeclarationList* i = data->fdesc->arguments; i; i = i->next) {
+				print_datatype(i->decl->datatype, indent + 2);
 			}
 			INDENT(indent + 1);
 			printf("]\n");
@@ -527,7 +535,7 @@ print_datatype(Datatype* data, int indent) {
 	printf("]\n");
 }
 
-static char*
+char*
 tostring_datatype(const Datatype* data) {
 	char* buf = calloc(1, 1024); /* definitely enough space */
 	for (int i = 0; i < data->array_dim; i++) {
@@ -554,8 +562,8 @@ tostring_datatype(const Datatype* data) {
 			break;
 		case DATA_FPTR:
 			strcat(buf, "(");
-			for (DatatypeList* i = data->fdesc->arguments; i; i = i->next) {
-				char* arg = tostring_datatype(i->data);
+			for (VarDeclarationList* i = data->fdesc->arguments; i; i = i->next) {
+				char* arg = tostring_datatype(i->decl->datatype);
 				sprintf(buf + strlen(buf), "%s", arg);
 				free(arg);
 				if (i->next) {
@@ -693,6 +701,13 @@ find_local(ParseState* P, const char* name) {
 			}
 		}
 	}
+	if (P->current_function) {
+		for (VarDeclarationList* i = P->current_function->funcval->desc->arguments; i; i = i->next) {
+			if (!strcmp(i->decl->name, name)) {
+				return i->decl;
+			}
+		}
+	}
 	return NULL;
 }
 
@@ -736,10 +751,10 @@ types_match(const Datatype* a, const Datatype* b) {
 		if (!types_match(da->return_type, db->return_type)) {
 			return 0;
 		}
-		DatatypeList* aa = da->arguments;
-		DatatypeList* ab = db->arguments;
+		VarDeclarationList* aa = da->arguments;
+		VarDeclarationList* ab = db->arguments;
 		while (aa) {
-			if (!types_match(aa->data, ab->data)) {
+			if (!types_match(aa->decl->datatype, ab->decl->datatype)) {
 				return 0;
 			}
 			aa = aa->next;
@@ -802,6 +817,7 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			
 			/* call_args = num_of_commas + 1 (unless arguments == NULL, then 0) */
 			ExpNode* arg = exp->cval->arguments;
+			typecheck_expression(P, arg);
 			if (arg) call_args++;
 			while (arg && arg->type == EXP_BINARY && arg->bval->optype == ',') {
 				call_args++;
@@ -969,6 +985,7 @@ parse_expression(ParseState* P) {
 			push->cval = malloc(sizeof(FuncCall));
 			push->cval->fptr = NULL;
 			push->cval->arguments = parse_expression(P);
+			push->cval->num_args = 0;
 			if (push->cval->arguments) {
 				push->cval->arguments->parent = push;
 			}
@@ -1192,6 +1209,22 @@ parse_continue(ParseState* P) {
 }
 
 static void
+parse_return(ParseState* P) {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->type = NODE_RETURN;
+	node->stateval = malloc(sizeof(TreeStatement));
+	
+	P->tokens = P->tokens->next;
+	mark_operator(P, SPEC_NULL, ';');
+	node->stateval->exp = parse_expression(P);
+	typecheck_expression(P, node->stateval->exp);
+	P->tokens = P->tokens->next; /* skip ; */
+
+	append_node(P, node);
+	
+}
+
+static void
 parse_block(ParseState* P) {
 	TreeNode* node = malloc(sizeof(TreeNode));
 	node->type = NODE_BLOCK;
@@ -1221,25 +1254,26 @@ parse_function_descriptor(ParseState* P) {
 	P->tokens = P->tokens->next; /* skip ( */
 	
 	while (!on_op(P, ')')) {
-		Datatype* data = parse_datatype(P);
+		if (!matches_declaration(P)) {
+			parse_die(P, "expected declaration in argument list");
+		}
+		VarDeclaration* arg = parse_declaration(P);
 		fdesc->nargs++;
-		fdesc->stack_space += data->size;
+		//fdesc->stack_space += arg->datatype->size;
 		if (!fdesc->arguments) {
-			fdesc->arguments = malloc(sizeof(DatatypeList));
-			fdesc->arguments->data = data;
+			fdesc->arguments = malloc(sizeof(VarDeclarationList));
+			fdesc->arguments->decl = arg;
 			fdesc->arguments->next = NULL;	
 		} else {
-			DatatypeList* scan = fdesc->arguments;
+			VarDeclarationList* scan = fdesc->arguments;
 			while (scan->next) {
 				scan = scan->next;
 			}
-			DatatypeList* new = malloc(sizeof(DatatypeList));
-			new->data = data;
+			VarDeclarationList* new = malloc(sizeof(VarDeclarationList));
+			new->decl = arg;
 			new->next = NULL;
 			scan->next = new;
 		}
-		/* should now be on final token of argument... increase by one */
-		P->tokens = P->tokens->next;
 		if (!on_op(P, ')')) {
 			eat_operator(P, ',');
 			if (on_op(P, ')')) {
@@ -1495,12 +1529,15 @@ parse_for(ParseState* P) {
 	eat_operator(P, '(');
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->init = parse_expression(P);
+	typecheck_expression(P, node->forval->init);
 	P->tokens = P->tokens->next; /* skip ; */
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->condition = parse_expression(P);
+	typecheck_expression(P, node->forval->condition);
 	P->tokens = P->tokens->next; /* skip ; */
 	mark_operator(P, '(', ')');
 	node->forval->statement = parse_expression(P);
+	typecheck_expression(P, node->forval->statement);
 	P->tokens = P->tokens->next; /* skip ) */
 
 	append_node(P, node);
@@ -1550,6 +1587,8 @@ generate_syntax_tree(TokenList* tokens) {
 			parse_break(P);
 		} else if (on_ident(P, "continue")) {
 			parse_continue(P);
+		} else if (on_ident(P, "return")) {
+			parse_return(P);
 		} else if (matches_declaration(P)) {
 			VarDeclaration* var = parse_declaration(P);
 			var->offset = P->current_offset;

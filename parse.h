@@ -97,7 +97,7 @@ struct FunctionDescriptor {
 	unsigned int nargs;
 	unsigned int stack_space;
 	unsigned int is_global;
-	DatatypeList* arguments;
+	VarDeclarationList* arguments;
 	Datatype* return_type;
 };
 
@@ -242,5 +242,6 @@ struct ParseState {
 
 ParseState* generate_syntax_tree(TokenList*);
 void print_expression(ExpNode*, int);
+char* tostring_datatype(const Datatype*);
 
 #endif
