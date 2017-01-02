@@ -813,31 +813,30 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 				}
 			}
 
-			unsigned int call_args = 0;
-			
 			/* call_args = num_of_commas + 1 (unless arguments == NULL, then 0) */
-			ExpNode* arg = exp->cval->arguments;
+			FuncCall* call = exp->cval;
+			ExpNode* arg = call->arguments;
 			typecheck_expression(P, arg);
-			if (arg) call_args++;
+			if (arg) call->nargs++;
 			while (arg && arg->type == EXP_BINARY && arg->bval->optype == ',') {
-				call_args++;
+				call->nargs++;
 				arg = arg->bval->left;
 			}
 			
 			/* make sure number of args is correct */
-			if (call_args != desc->nargs) {
+			if (call->nargs != desc->nargs) {
 				if (func_id) {
 					parse_die(P,
 						"incorrect number of arguments passed to function '%s'; expected %d, got %d",
 						func_id,
 						desc->nargs,
-						call_args
+						call->nargs
 					);
 				} else {
 					parse_die(P,
 						"incorrect number of arguments passed to function; expected %d, got %d",
 						desc->nargs,
-						call_args
+						call->nargs
 					);
 				}
 			}
@@ -985,7 +984,7 @@ parse_expression(ParseState* P) {
 			push->cval = malloc(sizeof(FuncCall));
 			push->cval->fptr = NULL;
 			push->cval->arguments = parse_expression(P);
-			push->cval->num_args = 0;
+			push->cval->nargs = 0;
 			if (push->cval->arguments) {
 				push->cval->arguments->parent = push;
 			}

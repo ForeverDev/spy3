@@ -1,3 +1,8 @@
+struct ExampleStruct {
+	field_int: int;
+	field_fptr: (arg0: int) -> int;
+};
+
 factorial: (n: int) -> int {
 	if (n <= 1)
 		return 1;
@@ -5,9 +10,35 @@ factorial: (n: int) -> int {
 }
 
 main: () -> void {
-
-	thing: int;
 	
-	thing = factorial(6);	
+	/* variable declarations */
+	i: int;
+	j: int;
+	result: int;
+	foo: ExampleStruct;
+	
+	/* initialize foo */
+	foo.field_int = 5;
+	foo.field_fptr = factorial;
+
+	/* call factorial through pointer */
+	result = foo.field_fptr(foo.field_int);
+	
+	/* example for loop with a local variable */	
+	for (i = 0; i < 100; i += 1) {
+		for (j = 0; j < 100; j += 1) {
+
+			local: int;
+
+			local = (i + j) / 15;
+			
+			if (local % 10 == 3)
+				continue;
+
+			if (local == 19)
+				break;
+
+		}
+	}
 	
 }

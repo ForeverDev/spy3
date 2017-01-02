@@ -5,7 +5,7 @@
 #include "generate.h"
 
 #define FORMAT_LABEL ".L%d"
-#define FORMAT_FUNC  "__F%s__"
+#define FORMAT_FUNC  "%s"
 
 #define FORMAT_DEF_FUNC FORMAT_FUNC ":\n"
 #define FORMAT_LOC_LABEL "." FORMAT_LABEL ":\n"
@@ -279,9 +279,19 @@ advance(CompileState* C) {
 static void
 generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
-	void (*writer)(CompileState*, const char*, ...) = C->exp_push ? pushb : writeb;
+	void (*writer)(CompileState*, const char*, ...); 
 	int is_top = exp->parent == NULL;
-	int is_assign = exp->parent ? IS_ASSIGN(exp->parent->bval) : 0;
+	int is_assign;
+	if (C->exp_push) {
+		writer = pushb;
+	} else {
+		writer = writeb;
+	}
+	if (exp->parent) {
+		is_assign = IS_ASSIGN(exp->parent->bval);
+	} else {
+		is_assign = 0;
+	}
 	int dont_der = (
 		exp->parent &&
 		exp->parent->type == EXP_BINARY &&
@@ -300,7 +310,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	}
 	switch (exp->type) {
 		case EXP_INTEGER:
-			writer(C, "iconst %d\n", exp->ival);
+			writer(C, "iconst 0x%X\n", exp->ival);
 			break;
 		case EXP_FLOAT:
 			writer(C, "fconst %f\n", exp->fval);
@@ -312,10 +322,10 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
 			} else if (dont_der && var->datatype->type != DATA_STRUCT) {
 				/* structs are pointers, use locall */
-				writer(C, "lea %d\n", var->offset);
+				writer(C, "lea 0x%x\n", var->offset);
 			} else {
 				char prefix = get_prefix(var->datatype);
-				writer(C, "%clocall %d\n", prefix, var->offset);
+				writer(C, "%clocall 0x%x\n", prefix, var->offset);
 			}
 			break;
 		}
@@ -326,9 +336,9 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			}
 			generate_expression(C, call->arguments);
 			if (call->computed) {
-				writer(C, "ccall %d\n", call->num_args);
+				writer(C, "ccall 0x%x\n", call->nargs);
 			} else {
-				writer(C, "call " FORMAT_FUNC ", %d\n", call->fptr->sval, call->num_args);
+				writer(C, "call " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
 			}
 			break;
 		}
@@ -342,12 +352,12 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					VarDeclaration* obj = get_local(C, lhs->sval);
 					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
 					/* call to generate made lea, now add offset */
-					writer(C, "iinc %d\n", field->offset);	
+					writer(C, "iinc 0x%x\n", field->offset);	
 				} else {
 					/* if it's a chain (not at the bottom), grab the field from the eval
 					 * instead of finding the struct from its identifier */
 					VarDeclaration* field = get_field(lhs->eval->sdesc, rhs->sval);
-					writer(C, "iinc %d\n", field->offset);	
+					writer(C, "iinc 0x%x\n", field->offset);	
 				}
 				if (!is_assign) {
 					writer(C, "%cder\n", get_prefix(exp->eval));	
@@ -490,7 +500,6 @@ static void
 generate_condition(CompileState* C, ExpNode* condition) {
 	if (condition) {
 		C->cond_jmp = 1;
-		print_expression(condition, 0);
 		generate_expression(C, condition);
 		C->cond_jmp = 0;
 		if (!IS_COMPARE(condition)) {
@@ -534,6 +543,32 @@ generate_for(CompileState* C) {
 	pushb(C, FORMAT_DEF_LABEL, C->break_label);
 }
 
+/* generate_function helper function */
+static void 
+print_stack_map(CompileState* C, TreeNode* node) {
+	VarDeclarationList* list = NULL;
+	switch (node->type) {
+		case NODE_BLOCK:
+			list = node->blockval->locals;
+			break;
+		case NODE_FUNC_IMPL:
+			list = node->funcval->desc->arguments;
+			break;	
+	}
+	if (list) {
+		for (; list; list = list->next) {
+			VarDeclaration* var = list->decl;
+			char* dt = tostring_datatype(var->datatype);
+			writeb(C, ";\t [0x%04X] %s: %s\n", var->offset, var->name, dt);
+			free(dt);
+		}
+	}
+	for (TreeNode* i = get_child(node); i; i = i->next) {
+		print_stack_map(C, i);
+	}
+
+}
+
 static void
 generate_function(CompileState* C) {
 	C->current_function = C->focus;
@@ -552,16 +587,19 @@ generate_function(CompileState* C) {
 	writeb(C, "\n");
 	free(d);
 	free(header);
-	writeb(C, "; return label is " FORMAT_LABEL "\n", C->return_label);
+	writeb(C, "; return label: " FORMAT_LABEL "\n", C->return_label);
+	writeb(C, "; stack space: %d bytes\n", C->focus->funcval->desc->stack_space);
+	writeb(C, "; stack map:\n");
+	print_stack_map(C, C->focus);
 
 	TreeFunction* func = C->focus->funcval;
 	FunctionDescriptor* desc = func->desc;
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
 	int index = 0;
 	for (VarDeclarationList* i = desc->arguments; i; i = i->next) {
-		writeb(C, "%carg %d\n", get_prefix(i->decl->datatype), index++);
+		writeb(C, "%carg 0x%x\n", get_prefix(i->decl->datatype), index++);
 	}
-	writeb(C, "res %d\n", desc->stack_space);
+	writeb(C, "res 0x%x\n", desc->stack_space);
 	pushb(C, FORMAT_DEF_LABEL, C->return_label);
 	const Datatype* ret = desc->return_type;
 	if (ret->type == DATA_VOID) {
@@ -582,13 +620,14 @@ initialize_local(CompileState* C, VarDeclaration* var) {
 	writeb(C, "; initialize '%s'\n", var->name);
 	if (d->type == DATA_STRUCT && !is_ptr) {
 		/* if it's a struct, initialize it as a pointer to stack space */
-		writeb(C, "lea %d\n", var->offset + 8);
+		writeb(C, "lea 0x%x\n", var->offset + 8);
 	} else {
 		/* otherwise just initialize it as 0... no need to initialize a float
 		 * differently because a 0 int is a 0 float */
-		writeb(C, "iconst 0\n");
+		writeb(C, "iconst 0x0\n");
 	}
-	writeb(C, "ilocals %d\n", var->offset);
+	writeb(C, "ilocals 0x%x\n", var->offset);
+	writeb(C, "; -----------\n");
 }
 
 void
@@ -659,7 +698,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	}
 	
 	writeb(&C, "\n__ENTRY__:\n");	
-	writeb(&C, "call __Fmain__, 0\n");
+	writeb(&C, "call " FORMAT_FUNC ", 0x0\n", "main");
 	writeb(&C, "exit\n");
 
 	fclose(C.handle);

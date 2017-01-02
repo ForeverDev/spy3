@@ -100,6 +100,7 @@ const SpyInstruction spy_instructions[255] = {
 	{"ftoi", 0x57, {OP_NONE}},				/* [float value] -> [int value] */
 	{"dup", 0x58, {OP_NONE}},				/* [int value] -> [int value, int value] */
 	{"fsave", 0x59, {OP_NONE}},				/* [int addr, float value] -> [] */
+	{"mod", 0x5A, {OP_NONE}},				/* [int a, int b] -> [int result] */
 
 	/* debuggers */
 	{"ilog", 0xFD, {OP_NONE}},				
@@ -933,6 +934,11 @@ spy_execute(const char* filename) {
 				spy_save_float(spy, addr, value);	
 				break;
 			}
+
+			/* MOD */
+			case 0x5A:
+				INTARITH(%);
+				break;
 
 			/* ILOG */
 			case 0xFD:
