@@ -197,7 +197,7 @@ get_local(CompileState* C, const char* identifier) {
 		}
 	}
 	if (C->current_function) {
-		for (VarDeclarationList* i = C->current_function->funcval->desc->arguments; i; i = i->next) {
+		for (VarDeclarationList* i = C->current_function->funcval->desc->fdesc->arguments; i; i = i->next) {
 			if (!strcmp(i->decl->name, identifier)) {
 				return i->decl;
 			}
@@ -333,14 +333,17 @@ generate_expression(CompileState* C, ExpNode* exp) {
 		}
 		case EXP_IDENTIFIER: {
 			VarDeclaration* var = get_local(C, exp->sval);
+			Datatype* d = var->datatype;
 
-			if (var->datatype->type == DATA_FPTR && var->datatype->fdesc->is_global) {
+			if (d->type == DATA_FPTR && d->fdesc->is_global) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
-			} else if (dont_der && var->datatype->type != DATA_STRUCT) {
+			} else if (d->type == DATA_FPTR && d->mods & MOD_CFUNC) {
+				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
+			} else if (dont_der && d->type != DATA_STRUCT) {
 				/* structs are pointers, use locall */
 				writer(C, "lea 0x%x\n", var->offset);
 			} else {
-				char prefix = get_prefix(var->datatype);
+				char prefix = get_prefix(d);
 				writer(C, "%clocall 0x%x\n", prefix, var->offset);
 			}
 			break;
@@ -353,7 +356,11 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				generate_expression(C, call->fptr);
 			}
 			if (call->computed) {
-				writer(C, "ccall 0x%x\n", call->nargs);
+				if (call->fptr->eval->mods & MOD_CFUNC) {
+					writer(C, "ccfcall 0x%x\n", call->nargs);
+				} else {
+					writer(C, "ccall 0x%x\n", call->nargs);
+				}
 			} else {
 				writer(C, "call " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
 			}
@@ -432,6 +439,9 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			} else { 
 				generate_expression(C, lhs);
 				generate_expression(C, rhs);
+				if (exp->bval->optype == ',') {
+					break;
+				}
 				char prefix = get_prefix(exp->eval);
 				switch (exp->bval->optype) {
 					case '+':
@@ -569,7 +579,7 @@ print_stack_map(CompileState* C, TreeNode* node) {
 			list = node->blockval->locals;
 			break;
 		case NODE_FUNC_IMPL:
-			list = node->funcval->desc->arguments;
+			list = node->funcval->desc->fdesc->arguments;
 			break;	
 	}
 	if (list) {
@@ -594,24 +604,18 @@ generate_function(CompileState* C) {
 	C->return_label = C->label_count++;
 
 	/* todo make this debug less nasty */
-	Datatype* d = malloc(sizeof(Datatype));
-	d->type = DATA_FPTR;
-	d->fdesc = C->focus->funcval->desc; 
-	d->array_dim = 0;
-	d->ptr_dim = 0;
-	char* header = tostring_datatype(d);
+	char* header = tostring_datatype(C->focus->funcval->desc);
 	writeb(C, "\n; %s: ", C->focus->funcval->name);
 	writeb(C, header);
 	writeb(C, "\n");
-	free(d);
 	free(header);
 	writeb(C, "; return label: " FORMAT_LABEL "\n", C->return_label);
-	writeb(C, "; stack space: %d bytes\n", C->focus->funcval->desc->stack_space);
+	writeb(C, "; stack space: %d bytes\n", C->focus->funcval->desc->fdesc->stack_space);
 	writeb(C, "; stack map:\n");
 	print_stack_map(C, C->focus);
 
 	TreeFunction* func = C->focus->funcval;
-	FunctionDescriptor* desc = func->desc;
+	FunctionDescriptor* desc = func->desc->fdesc;
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
 	int index = 0;
 	for (VarDeclarationList* i = desc->arguments; i; i = i->next) {
@@ -632,13 +636,14 @@ static void
 initialize_local(CompileState* C, VarDeclaration* var) {
 	/* global functions don't get initialized */
 	Datatype* d = var->datatype;
-	if (d->type == DATA_FPTR && d->fdesc->is_global) {
+	if (d->type == DATA_FPTR /*&& d->desc->is_global*/) {
 		return;
 	}
 	int is_ptr = var->datatype->ptr_dim > 0;
 	writeb(C, "; initialize '%s'\n", var->name);
 	if (d->type == DATA_STRUCT && !is_ptr) {
 		/* if it's a struct, initialize it as a pointer to stack space */
+		/* note a struct's stack space exists 8 bytes after its pointer */
 		writeb(C, "lea 0x%x\n", var->offset + 8);
 	} else {
 		/* otherwise just initialize it as 0... no need to initialize a float
@@ -679,6 +684,15 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	}
 
 	writeb(&C, "jmp __ENTRY__\n");
+
+	/* generate c function names */
+	for (VarDeclarationList* i = C.root_node->blockval->locals; i; i = i->next) {
+		VarDeclaration* var = i->decl;
+		Datatype* d = var->datatype;
+		if (d->type == DATA_FPTR && d->mods & MOD_CFUNC) {
+			writeb(&C, "%s: db \"%s\\0\"\n", var->name, var->name);
+		}
+	}
 	
 	do {
 		switch (C.focus->type) {

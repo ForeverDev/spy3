@@ -101,6 +101,7 @@ const SpyInstruction spy_instructions[255] = {
 	{"dup", 0x58, {OP_NONE}},				/* [int value] -> [int value, int value] */
 	{"fsave", 0x59, {OP_NONE}},				/* [int addr, float value] -> [] */
 	{"mod", 0x5A, {OP_NONE}},				/* [int a, int b] -> [int result] */
+	{"ccfcall", 0x5B, {OP_INT64}},			/* [char* name] -> [int ip_save, int bp_save, int nargs] */
 
 	/* debuggers */
 	{"ilog", 0xFD, {OP_NONE}},				
@@ -939,6 +940,35 @@ spy_execute(const char* filename) {
 			case 0x5A:
 				INTARITH(%);
 				break;
+			
+			/* CCFCALL */
+			case 0x5B: {
+				char* cf_name = (char *)&code[spy_pop_int(spy)];
+				spy_int nargs = spy_code_int64();
+				uint64_t* args = malloc(sizeof(uint64_t) * nargs);
+				for (int i = 0; i < nargs; i++) {
+					args[i] = spy_pop_int(spy);
+				}
+				for (int i = 0; i < nargs; i++) {
+					spy_push_int(spy, args[i]);
+				}
+				free(args);
+				SpyCFunc* cfunc = NULL;
+				for (SpyCFuncList* i = spy->cfuncs; i; i = i->next) {
+					if (!i->cfunc) {
+						break;
+					}
+					if (!strcmp(i->cfunc->name, cf_name)) {
+						cfunc = i->cfunc;
+						break;
+					}	
+				}
+				if (!cfunc) {
+					spy_die("unknown c-function '%s'", cf_name);
+				}
+				cfunc->f(spy);
+				break;
+			}
 
 			/* ILOG */
 			case 0xFD:

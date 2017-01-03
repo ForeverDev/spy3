@@ -4,9 +4,6 @@
 #include <stdarg.h>
 #include "parse.h"
 
-#define MOD_STATIC (0x1 << 0)
-#define MOD_CONST (0x1 << 1)
-
 typedef struct ExpStack ExpStack;
 typedef struct OpEntry OpEntry;
 
@@ -98,7 +95,7 @@ is_keyword(const char* word) {
 	static const char* keywords[] = {
 		"if", "while", "for", "do", "struct",
 		"return", "continue", "break", "const",
-		"static", NULL
+		"static", "cfunc", NULL
 	};
 	for (const char** i = keywords; *i; i++) {
 		if (!strcmp(*i, word)) {
@@ -244,7 +241,7 @@ append_node(ParseState* P, TreeNode* node) {
 				break;
 			case NODE_FUNC_IMPL:
 				/* found function? reset offset */
-				P->current_offset = target->funcval->desc->stack_space;
+				P->current_offset = target->funcval->desc->fdesc->stack_space;
 				P->current_function = target;
 				target->funcval->child = node;
 				break;
@@ -407,14 +404,14 @@ print_tree(TreeNode* tree, int indent) {
 			printf("NAME: %s\n", tree->funcval->name);
 			INDENT(indent + 1);
 			printf("ARGUMENTS: [\n");
-			for (VarDeclarationList* i = tree->funcval->desc->arguments; i; i = i->next) {
+			for (VarDeclarationList* i = tree->funcval->desc->fdesc->arguments; i; i = i->next) {
 				print_datatype(i->decl->datatype, indent + 2);
 			}
 			INDENT(indent + 1);
 			printf("]\n");
 			INDENT(indent + 1);
 			printf("RETURN TYPE: \n");
-			print_datatype(tree->funcval->desc->return_type, indent + 1);
+			print_datatype(tree->funcval->desc->fdesc->return_type, indent + 1);
 			INDENT(indent + 1);
 			printf("CHILD: [\n");
 			print_tree(tree->funcval->child, indent + 2);
@@ -558,6 +555,9 @@ tostring_datatype(const Datatype* data) {
 	if (mods & MOD_CONST) {
 		strcat(buf, "const ");
 	}
+	if (mods & MOD_CFUNC) {
+		strcat(buf, "cfunc ");
+	}
 	switch (data->type) {
 		case DATA_INT:
 			strcat(buf, "int");
@@ -658,7 +658,8 @@ matches_datatype(ParseState* P) {
 		|| on_ident(P, "byte") 
 		|| on_ident(P, "struct")
 		|| on_ident(P, "const")
-		|| on_ident(P, "static")) {
+		|| on_ident(P, "static")
+		|| on_ident(P, "cfunc")) {
 		MATCH_TRUE();
 	}
 
@@ -702,7 +703,7 @@ find_function(ParseState* P, const char* name) {
 			continue;
 		}
 		if (!strcmp(i->funcval->name, name)) {
-			return i->funcval->desc;
+			return i->funcval->desc->fdesc;
 		}
 	}
 	return NULL;
@@ -721,7 +722,7 @@ find_local(ParseState* P, const char* name) {
 		}
 	}
 	if (P->current_function) {
-		for (VarDeclarationList* i = P->current_function->funcval->desc->arguments; i; i = i->next) {
+		for (VarDeclarationList* i = P->current_function->funcval->desc->fdesc->arguments; i; i = i->next) {
 			if (!strcmp(i->decl->name, name)) {
 				return i->decl;
 			}
@@ -917,6 +918,9 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					break;
 				}
 				default: {
+					if (exp->bval->optype == ',') {
+						return exp->eval = NULL;
+					}
 					const Datatype* left = typecheck_expression(P, exp->bval->left);
 					const Datatype* right = typecheck_expression(P, exp->bval->right);
 					int left_const = left->mods & MOD_CONST;
@@ -1345,6 +1349,8 @@ parse_modifiers(ParseState* P) {
 			mod |= MOD_STATIC;
 		} else if (!strcmp(id, "const")) {
 			mod |= MOD_CONST;
+		} else if (!strcmp(id, "cfunc")) {
+			mod |= MOD_CFUNC;
 		} else {
 			break;
 		}
@@ -1426,6 +1432,20 @@ parse_datatype(ParseState* P) {
 		/* overwrite size if it's a pointer */
 		if (data->ptr_dim > 0) {
 			data->size = 8;
+		}
+	}
+
+	/* make sure modifiers aren't used illegally */
+	if (data->type == DATA_FPTR) {
+		if (data->mods & MOD_STATIC) {
+			parse_die(P, "the modifier 'static' cannot be applied to functions");
+		}
+		if (data->mods & MOD_CONST) {
+			parse_die(P, "the modifier 'const' cannot be applied to functions");
+		}
+	} else {
+		if (data->mods & MOD_CFUNC) {
+			parse_die(P, "the modifier 'cfunc' can only be applied to functions");
 		}
 	}
 	
@@ -1676,6 +1696,11 @@ generate_syntax_tree(TokenList* tokens) {
 				 * on the stack with a pointer */
 				inc += 8;
 			}
+			if (var->datatype->type == DATA_FPTR) {
+				if (var->datatype->mods & MOD_CFUNC && P->current_block != P->root_node) {
+					parse_die(P, "cfunctions must be declared in the global scope");
+				}	
+			}
 			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
 
 				var->datatype->fdesc->is_global = 1;
@@ -1692,6 +1717,9 @@ generate_syntax_tree(TokenList* tokens) {
 				if (var->datatype->ptr_dim > 0) {
 					parse_die(P, "a function pointer cannot be implemented");
 				}
+				if (var->datatype->mods & MOD_CFUNC) {
+					parse_die(P, "a function with the modifier 'cfunc' cannot be implemented");
+				}
 
 				/* now that we know it's an implementation, wrap it in
 				 * a node and append it to the tree */
@@ -1701,12 +1729,11 @@ generate_syntax_tree(TokenList* tokens) {
 				node->prev = NULL;
 				node->type = NODE_FUNC_IMPL;
 				node->funcval = malloc(sizeof(TreeFunction));
-				node->funcval->desc = var->datatype->fdesc;
+				node->funcval->desc = var->datatype;
 				node->funcval->name = var->name;
 
 				/* also append it as a var so that it can be referenced */
 				register_local(P, var);
-				
 
 				append_node(P, node);
 			} else {
@@ -1714,7 +1741,7 @@ generate_syntax_tree(TokenList* tokens) {
 				eat_operator(P, ';');
 				P->current_offset += inc;
 				if (P->current_function) {
-					P->current_function->funcval->desc->stack_space += inc;
+					P->current_function->funcval->desc->fdesc->stack_space += inc;
 				}
 			}
 		} else if (on_op(P, '{')) {

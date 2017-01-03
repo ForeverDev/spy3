@@ -1,34 +1,15 @@
-struct Name {
-	first: ^byte;
-	middle: ^byte;
-	last: ^byte;
-};
-
-struct Person {
-	age: int;
-	name: Name;
-};
-
-struct NestedFunction {
-	function: (a: Person) -> void;
-};
-
-do_something: (person: Person) -> void {
-}
+print: cfunc (string: ^byte, number: int) -> void;
 
 main: () -> void {
 	
-	nest: NestedFunction;
-	david: Person;
+	format: ^byte;
+	number: int;
 
-	nest.function = do_something;
+	format = "hello, here is a number: %d\n";
+	number = 42;
 
-	david.age = 16;
-	david.name.first = "David";
-	david.name.middle = "Bradford";
-	david.name.last = "Wilson";
-
-	nest.function(david);
+	print(format, number);
+	
 	
 }
 

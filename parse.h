@@ -4,6 +4,10 @@
 #include "lex.h"
 #include "spy_types.h"
 
+#define MOD_STATIC (0x1 << 0)
+#define MOD_CONST (0x1 << 1)
+#define MOD_CFUNC (0x1 << 2)
+
 /* t is a bval node */
 #define IS_ASSIGN(t) ((t)->optype == '=' || \
 					  (t)->optype == SPEC_INC_BY || \
@@ -152,7 +156,7 @@ struct Datatype {
 	unsigned int ptr_dim;
 	
 	unsigned int mods;
-	
+
 	/* number of bytes needed to store a variable of this type...
 	 * NOTE: when the res instructions is used, the number of bytes reserved
 	 * is (sum locals in function) rounded up to nearest multiple of 8 (for stack alignment)
@@ -223,7 +227,7 @@ struct TreeStatement {
 };
 
 struct TreeFunction {
-	FunctionDescriptor* desc;
+	Datatype* desc;
 	char* name;
 	TreeNode* child;
 };
