@@ -4,6 +4,9 @@
 #include <stdarg.h>
 #include "parse.h"
 
+#define MOD_STATIC (0x1 << 0)
+#define MOD_CONST (0x1 << 1)
+
 typedef struct ExpStack ExpStack;
 typedef struct OpEntry OpEntry;
 
@@ -94,7 +97,8 @@ static int
 is_keyword(const char* word) {
 	static const char* keywords[] = {
 		"if", "while", "for", "do", "struct",
-		"return", "continue", "break", NULL
+		"return", "continue", "break", "const",
+		"static", NULL
 	};
 	for (const char** i = keywords; *i; i++) {
 		if (!strcmp(*i, word)) {
@@ -467,6 +471,9 @@ print_expression(ExpNode* exp, int indent) {
 		case EXP_IDENTIFIER:
 			printf("%s\n", exp->sval);
 			break;
+		case EXP_STRING:
+			printf("\"%s\"\n", exp->sval);
+			break;
 		case EXP_CALL:
 			printf("CALL (computed = %d)\n", exp->cval->computed);
 			print_expression(exp->cval->fptr, indent + 1);
@@ -538,11 +545,18 @@ print_datatype(Datatype* data, int indent) {
 char*
 tostring_datatype(const Datatype* data) {
 	char* buf = calloc(1, 1024); /* definitely enough space */
+	unsigned int mods = data->mods;
 	for (int i = 0; i < data->array_dim; i++) {
 		strcat(buf, "[]");
 	}
 	for (int i = 0; i < data->ptr_dim; i++) {
 		strcat(buf, "^");
+	}
+	if (mods & MOD_STATIC) {
+		strcat(buf, "static ");
+	}
+	if (mods & MOD_CONST) {
+		strcat(buf, "const ");
 	}
 	switch (data->type) {
 		case DATA_INT:
@@ -639,7 +653,12 @@ matches_datatype(ParseState* P) {
 		MATCH_TRUE();
 	}
 
-	if (on_ident(P, "int") || on_ident(P, "float") || on_ident(P, "byte") || on_ident(P, "struct")) {
+	if (   on_ident(P, "int") 
+		|| on_ident(P, "float") 
+		|| on_ident(P, "byte") 
+		|| on_ident(P, "struct")
+		|| on_ident(P, "const")
+		|| on_ident(P, "static")) {
 		MATCH_TRUE();
 	}
 
@@ -774,6 +793,8 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			return exp->eval = P->type_int;
 		case EXP_FLOAT:
 			return exp->eval = P->type_float;
+		case EXP_STRING:
+			return exp->eval = P->type_string;
 		case EXP_UNARY:
 			return exp->eval = typecheck_expression(P, exp->uval->operand);
 		case EXP_IDENTIFIER: {
@@ -898,6 +919,11 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 				default: {
 					const Datatype* left = typecheck_expression(P, exp->bval->left);
 					const Datatype* right = typecheck_expression(P, exp->bval->right);
+					int left_const = left->mods & MOD_CONST;
+					int is_assign = IS_ASSIGN(exp->bval);	
+					if (is_assign && left_const) {
+						parse_die(P, "attempt to assign to a const memory address");
+					}
 					if (!types_match(left, right)) {
 						parse_die(P, 
 							"attempt to use operator (%s) on mismatched types '%s' and '%s'", 
@@ -973,7 +999,12 @@ parse_expression(ParseState* P) {
 			prev = P->tokens->prev->token;
 		}
 		/* function call? */
-		if (prev && prev->type == TOK_IDENTIFIER && tok->type == TOK_OPERATOR && tok->oval == '(') {
+		if (prev && tok->type == TOK_OPERATOR && tok->oval == '(' && 
+			(
+				(prev->type == TOK_OPERATOR && prev->oval == ')') ||
+				(prev->type == TOK_IDENTIFIER)
+			)
+		) {
 			P->tokens = P->tokens->next; /* advance to first argument token */
 			/* save mark */
 			TokenList* marksave = P->marked;
@@ -1098,6 +1129,13 @@ parse_expression(ParseState* P) {
 			push->type = EXP_INTEGER;
 			push->ival = tok->ival;
 			expstack_push(&postfix, push);
+		} else if (tok->type == TOK_STRING) {
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->parent = NULL;	
+			push->type = EXP_STRING;
+			push->sval = malloc(strlen(tok->sval) + 1); 
+			strcpy(push->sval, tok->sval);
+			expstack_push(&postfix, push);
 		} else if (tok->type == TOK_FLOAT) {
 			ExpNode* push = malloc(sizeof(ExpNode));
 			push->parent = NULL;
@@ -1115,7 +1153,11 @@ parse_expression(ParseState* P) {
 	}
 
 	while (expstack_top(&operators)) {
-		expstack_push(&postfix, expstack_pop(&operators));
+		ExpNode* pop = expstack_pop(&operators);
+		if (pop->type == EXP_UNARY && (pop->uval->optype == '(' || pop->uval->optype == ')')) {
+			parse_die(P, "mismatched parenthesis in expression");
+		}
+		expstack_push(&postfix, pop);
 	}
 	
 	/* === STAGE TWO ===
@@ -1129,7 +1171,7 @@ parse_expression(ParseState* P) {
 	for (ExpStack* i = postfix; i; i = i->next) {
 		ExpNode* at = i->node;
 		at->side = LEAF_NA;
-		if (at->type == EXP_INTEGER || at->type == EXP_FLOAT || at->type == EXP_IDENTIFIER) {
+		if (at->type == EXP_INTEGER || at->type == EXP_FLOAT || at->type == EXP_IDENTIFIER || at->type == EXP_STRING) {
 			/* just a literal? append to tree */
 			expstack_push(&tree, at);	
 		} else if (at->type == EXP_CALL) {
@@ -1289,6 +1331,30 @@ parse_function_descriptor(ParseState* P) {
 	
 }
 
+static uint32_t
+parse_modifiers(ParseState* P) {
+
+	uint32_t mod = 0;
+
+	while (1) {
+		if (P->tokens->token->type != TOK_IDENTIFIER) {
+			break;
+		}
+		char* id = P->tokens->token->sval;
+		if (!strcmp(id, "static")) {
+			mod |= MOD_STATIC;
+		} else if (!strcmp(id, "const")) {
+			mod |= MOD_CONST;
+		} else {
+			break;
+		}
+		P->tokens = P->tokens->next;
+	}
+	
+	return mod;
+
+}
+
 static Datatype*
 parse_datatype(ParseState* P) {
 	Datatype* data = malloc(sizeof(Datatype));
@@ -1298,7 +1364,8 @@ parse_datatype(ParseState* P) {
 	data->sdesc = NULL;
 	data->array_size = NULL;
 	data->type = DATA_NOTYPE;
-	
+	data->mods = parse_modifiers(P);
+
 	/* is array type */
 	/* TODO handle more than one array */
 	while (on_op(P, '[')) {
@@ -1561,17 +1628,29 @@ generate_syntax_tree(TokenList* tokens) {
 	P->append_target = NULL;
 	P->current_offset = 0;
 
-	P->type_int = calloc(1, sizeof(Datatype));
+	P->type_int = malloc(sizeof(Datatype));
 	P->type_int->type = DATA_INT;
+	P->type_int->ptr_dim = 0;
+	P->type_int->array_dim = 0;
 	P->type_int->size = 8;
 	
-	P->type_float = calloc(1, sizeof(Datatype));
+	P->type_float = malloc(sizeof(Datatype));
 	P->type_float->type = DATA_FLOAT;
+	P->type_float->ptr_dim = 0;
+	P->type_float->array_dim = 0;
 	P->type_float->size = 8;
 
-	P->type_byte = calloc(1, sizeof(Datatype));
+	P->type_byte = malloc(sizeof(Datatype));
+	P->type_byte->ptr_dim = 0;
+	P->type_byte->array_dim = 0;
 	P->type_byte->type = DATA_BYTE;
 	P->type_byte->size = 1;
+
+	P->type_string = malloc(sizeof(Datatype));
+	P->type_string->type = DATA_BYTE;
+	P->type_string->ptr_dim = 1;
+	P->type_string->array_dim = 0;
+	P->type_string->size = 1;
 
 	while (P->tokens && P->tokens->token) {
 		if (on_ident(P, "if")) {

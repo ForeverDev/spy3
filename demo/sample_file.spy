@@ -1,44 +1,34 @@
-struct ExampleStruct {
-	field_int: int;
-	field_fptr: (arg0: int) -> int;
+struct Name {
+	first: ^byte;
+	middle: ^byte;
+	last: ^byte;
 };
 
-factorial: (n: int) -> int {
-	if (n <= 1)
-		return 1;
-	return n * factorial(n - 1);
+struct Person {
+	age: int;
+	name: Name;
+};
+
+struct NestedFunction {
+	function: (a: Person) -> void;
+};
+
+do_something: (person: Person) -> void {
 }
 
 main: () -> void {
 	
-	/* variable declarations */
-	i: int;
-	j: int;
-	result: int;
-	foo: ExampleStruct;
-	
-	/* initialize foo */
-	foo.field_int = 5;
-	foo.field_fptr = factorial;
+	nest: NestedFunction;
+	david: Person;
 
-	/* call factorial through pointer */
-	result = foo.field_fptr(foo.field_int);
-	
-	/* example for loop with a local variable */	
-	for (i = 0; i < 100; i += 1) {
-		for (j = 0; j < 100; j += 1) {
+	nest.function = do_something;
 
-			local: int;
+	david.age = 16;
+	david.name.first = "David";
+	david.name.middle = "Bradford";
+	david.name.last = "Wilson";
 
-			local = (i + j) / 15;
-			
-			if (local % 10 == 3)
-				continue;
-
-			if (local == 19)
-				break;
-
-		}
-	}
+	nest.function(david);
 	
 }
+

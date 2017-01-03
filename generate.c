@@ -5,9 +5,11 @@
 #include "generate.h"
 
 #define FORMAT_LABEL ".L%d"
+#define FORMAT_STATIC ".S%d"
 #define FORMAT_FUNC  "%s"
 
 #define FORMAT_DEF_FUNC FORMAT_FUNC ":\n"
+#define FORMAT_DEF_STATIC FORMAT_STATIC ": db \"%s\\0\"\n"
 #define FORMAT_LOC_LABEL "." FORMAT_LABEL ":\n"
 #define FORMAT_DEF_LABEL FORMAT_LABEL ":\n"
 #define FORMAT_DEF_LOC_LABEL FORMAT_LOC_LABEL "\n"
@@ -22,6 +24,8 @@ struct CompileState {
 	TreeNode* current_function;
 	InstructionStack* ins_stack;
 	TreeStructList* defined_structs;
+	LiteralList* string_list;
+	unsigned int static_count;
 	unsigned int label_count;
 	unsigned int return_label;
 	unsigned int cont_label;
@@ -241,40 +245,34 @@ advance(CompileState* C) {
 	}
 	/* parent->next? */
 	while (C->focus) {
+		popb(C);
+		/* generate static strings if jumping out of function */
+		if (C->focus->type == NODE_FUNC_IMPL) {
+			/* generate static labels */
+			int index = 0;
+			for (LiteralList* i = C->string_list; i; i = i->next) {
+				writeb(C, FORMAT_DEF_STATIC, index, i->literal);	
+				index++;
+			}
+
+			/* free static strings */
+			LiteralList* next = NULL;
+			for (LiteralList* i = C->string_list; i;) {
+				free(i->literal);
+				next = i->next;
+				free(i);
+				i = next;
+			}
+			C->string_list = NULL;
+		}
 		if (C->focus->next) {
 			C->focus = C->focus->next;
 			return 1;
 		}
-		popb(C);
 		C->focus = C->focus->parent;
 	}
 	return 0;
 }
-
-/* t is a bval node */
-#define IS_ASSIGN(t) ((t)->optype == '=' || \
-					  (t)->optype == SPEC_INC_BY || \
-					  (t)->optype == SPEC_DEC_BY || \
-					  (t)->optype == SPEC_MUL_BY || \
-					  (t)->optype == SPEC_DIV_BY || \
-					  (t)->optype == SPEC_MOD_BY || \
-					  (t)->optype == SPEC_SHL_BY || \
-					  (t)->optype == SPEC_SHR_BY || \
-					  (t)->optype == SPEC_AND_BY || \
-					  (t)->optype == SPEC_OR_BY || \
-					  (t)->optype == SPEC_XOR_BY)
-
-#define IS_COMPARE(t) ((t)->type == EXP_BINARY && \
-						( \
-							(t)->bval->optype == '>' || \
-							(t)->bval->optype == '<' || \
-							(t)->bval->optype == SPEC_GE || \
-							(t)->bval->optype == SPEC_LE || \
-							(t)->bval->optype == SPEC_EQ || \
-							(t)->bval->optype == SPEC_NEQ \
-						) \
-					)
-
 
 static void
 generate_expression(CompileState* C, ExpNode* exp) {
@@ -315,6 +313,24 @@ generate_expression(CompileState* C, ExpNode* exp) {
 		case EXP_FLOAT:
 			writer(C, "fconst %f\n", exp->fval);
 			break;
+		case EXP_STRING: {
+			unsigned int label = C->static_count++;	
+			writer(C, "iconst " FORMAT_STATIC "\n", label);
+			LiteralList* lit = malloc(sizeof(LiteralList));
+			lit->literal = malloc(strlen(exp->sval) + 1);
+			strcpy(lit->literal, exp->sval);
+			lit->next = NULL;
+			if (!C->string_list) {
+				C->string_list = lit;
+			} else {
+				LiteralList* scan = C->string_list;
+				while (scan->next) {
+					scan = scan->next;
+				}
+				scan->next = lit;
+			}
+			break;
+		}
 		case EXP_IDENTIFIER: {
 			VarDeclaration* var = get_local(C, exp->sval);
 
@@ -331,10 +347,11 @@ generate_expression(CompileState* C, ExpNode* exp) {
 		}
 		case EXP_CALL: {
 			FuncCall* call = exp->cval;
+			generate_expression(C, call->arguments);
+			/* !!!IMPORTANT!!! CCALL ADDRESS COMES __AFTER__ ARGUMENTS! */
 			if (call->computed) {
 				generate_expression(C, call->fptr);
 			}
-			generate_expression(C, call->arguments);
 			if (call->computed) {
 				writer(C, "ccall 0x%x\n", call->nargs);
 			} else {
@@ -573,6 +590,7 @@ static void
 generate_function(CompileState* C) {
 	C->current_function = C->focus;
 	C->label_count = 0; /* reset label count, local labels are used */
+	C->static_count = 0;
 	C->return_label = C->label_count++;
 
 	/* todo make this debug less nasty */
@@ -607,6 +625,7 @@ generate_function(CompileState* C) {
 	} else {
 		pushb(C, "%cret\n", get_prefix(ret));
 	}
+
 }
 
 static void
@@ -650,7 +669,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	C.break_label = 0;
 	C.exp_push = 0;
 	C.cond_jmp = 0;
+	C.static_count = 0;
 	C.current_function = NULL;
+	C.string_list = NULL;
 
 	if (!C.root_node) {
 		fclose(C.handle);

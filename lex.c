@@ -117,6 +117,11 @@ on_identifier(LexState* L) {
 }
 
 static int
+on_string(LexState* L) {
+	return *L->contents == '"';
+}
+
+static int
 on_operator(LexState* L) {
 	return ispunct(*L->contents) && *L->contents != '_';
 }
@@ -189,6 +194,28 @@ lex_identifier(LexState* L) {
 	buf[len] = 0;
 	tok = malloc(sizeof(Token));
 	tok->type = TOK_IDENTIFIER;
+	tok->sval = buf;
+	append_token(L, tok);
+}
+
+static void
+lex_string(LexState* L) {
+	Token* tok;
+	char* buf;
+	char* start;
+	size_t len = 0;
+	L->contents++; /* skip " */
+	start = L->contents;
+	while (*L->contents && *L->contents != '"') {
+		len++;
+		L->contents++;
+	}
+	L->contents++;
+	buf = malloc(len + 1);
+	memcpy(buf, start, len);
+	buf[len] = 0;
+	tok = malloc(sizeof(Token));
+	tok->type = TOK_STRING;
 	tok->sval = buf;
 	append_token(L, tok);
 }
@@ -336,6 +363,8 @@ generate_tokens_from_source(const char* filename) {
 			lex_float(&L);
 		} else if (on_int(&L)) {
 			lex_int(&L);
+		} else if (on_string(&L)) {
+			lex_string(&L);
 		} else if (on_identifier(&L)) {
 			lex_identifier(&L);
 		} else if (on_operator(&L)) {

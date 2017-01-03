@@ -4,6 +4,32 @@
 #include "lex.h"
 #include "spy_types.h"
 
+/* t is a bval node */
+#define IS_ASSIGN(t) ((t)->optype == '=' || \
+					  (t)->optype == SPEC_INC_BY || \
+					  (t)->optype == SPEC_DEC_BY || \
+					  (t)->optype == SPEC_MUL_BY || \
+					  (t)->optype == SPEC_DIV_BY || \
+					  (t)->optype == SPEC_MOD_BY || \
+					  (t)->optype == SPEC_SHL_BY || \
+					  (t)->optype == SPEC_SHR_BY || \
+					  (t)->optype == SPEC_AND_BY || \
+					  (t)->optype == SPEC_OR_BY || \
+					  (t)->optype == SPEC_XOR_BY)
+
+#define IS_COMPARE(t) ((t)->type == EXP_BINARY && \
+						( \
+							(t)->bval->optype == '>' || \
+							(t)->bval->optype == '<' || \
+							(t)->bval->optype == SPEC_GE || \
+							(t)->bval->optype == SPEC_LE || \
+							(t)->bval->optype == SPEC_EQ || \
+							(t)->bval->optype == SPEC_NEQ \
+						) \
+					)
+
+
+
 typedef struct TreeNode TreeNode;
 typedef struct TreeIf TreeIf;
 typedef struct TreeWhile TreeWhile;
@@ -39,9 +65,10 @@ enum ExpNodeType {
 	EXP_BINARY = 2,
 	EXP_CAST = 3,
 	EXP_INTEGER = 4, /* literal */
-	EXP_FLOAT = 5, /* literal */
-	EXP_IDENTIFIER,
-	EXP_CALL
+	EXP_FLOAT = 5,   /* literal */
+	EXP_STRING = 6,  /* literal */
+	EXP_IDENTIFIER = 7,
+	EXP_CALL = 8
 };
 
 enum TreeNodeType {
@@ -123,6 +150,8 @@ struct Datatype {
 
 	/* 0 if not pointer */
 	unsigned int ptr_dim;
+	
+	unsigned int mods;
 	
 	/* number of bytes needed to store a variable of this type...
 	 * NOTE: when the res instructions is used, the number of bytes reserved
@@ -235,6 +264,7 @@ struct ParseState {
 	Datatype* type_int;
 	Datatype* type_float;
 	Datatype* type_byte;
+	Datatype* type_string;
 	TreeStructList* defined_structs;
 	unsigned int current_offset;
 };
