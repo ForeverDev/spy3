@@ -540,6 +540,16 @@ spy_execute(const char* filename) {
 			case 0x23: {
 				spy_int addr = spy_code_int64();
 				spy_int nargs = spy_code_int64();
+				if (nargs > 1) {
+					uint64_t* args = malloc(nargs * sizeof(uint64_t));
+					for (int i = 0; i < nargs; i++) {
+						args[i] = spy_pop_int(spy);
+					}
+					for (int i = 0; i < nargs; i++) {
+						spy_push_int(spy, args[i]);
+					}
+					free(args);
+				}
 				/* save things on stack */
 				spy_push_int(spy, (intptr_t)spy->ip);	/* save ip */
 				spy_push_int(spy, (intptr_t)spy->bp);	/* save bp */
@@ -553,6 +563,16 @@ spy_execute(const char* filename) {
 			case 0x24: {
 				spy_int addr = spy_pop_int(spy);
 				spy_int nargs = spy_code_int64();
+				if (nargs > 1) {
+					uint64_t* args = malloc(nargs * sizeof(uint64_t));
+					for (int i = 0; i < nargs; i++) {
+						args[i] = spy_pop_int(spy);
+					}
+					for (int i = 0; i < nargs; i++) {
+						spy_push_int(spy, args[i]);
+					}
+					free(args);
+				}
 				/* save things on stack */
 				spy_push_int(spy, (intptr_t)spy->ip);	/* save ip */
 				spy_push_int(spy, (intptr_t)spy->bp);	/* save bp */
@@ -566,6 +586,16 @@ spy_execute(const char* filename) {
 			case 0x25: {
 				char* cf_name = (char *)&code[spy_code_int64()];
 				spy_int nargs = spy_code_int64();
+				if (nargs > 1) {
+					uint64_t* args = malloc(nargs * sizeof(uint64_t));
+					for (int i = 0; i < nargs; i++) {
+						args[i] = spy_pop_int(spy);
+					}
+					for (int i = 0; i < nargs; i++) {
+						spy_push_int(spy, args[i]);
+					}
+					free(args);
+				}
 				SpyCFunc* cfunc = NULL;
 				for (SpyCFuncList* i = spy->cfuncs; i; i = i->next) {
 					if (!i->cfunc) {
@@ -598,7 +628,7 @@ spy_execute(const char* filename) {
 
 			/* EXIT */
 			case 0x27:
-				printf("INSTRUCTIONS EXECUTED: %llu\n", instructions);
+				//printf("INSTRUCTIONS EXECUTED: %llu\n", instructions);
 				return;
 
 			/* IDER */
@@ -630,7 +660,7 @@ spy_execute(const char* filename) {
 			/* RES */
 			case 0x2C: {
 				spy_int inc = spy_code_int64();
-				memset(spy->sp, 0, inc);
+				memset(spy->sp + 8, 0, inc);
 				spy->sp += inc;
 				break;
 			}
@@ -646,7 +676,7 @@ spy_execute(const char* filename) {
 				break;
 
 			/* IARG */
-			case 0x2F:
+			case 0x2F: 
 				spy_push_int(spy, *(spy_int *)&spy->bp[-3*8 - spy_code_int64()*8]);
 				break;
 			
@@ -945,14 +975,16 @@ spy_execute(const char* filename) {
 			case 0x5B: {
 				char* cf_name = (char *)&code[spy_pop_int(spy)];
 				spy_int nargs = spy_code_int64();
-				uint64_t* args = malloc(sizeof(uint64_t) * nargs);
-				for (int i = 0; i < nargs; i++) {
-					args[i] = spy_pop_int(spy);
+				if (nargs > 1) {
+					uint64_t* args = malloc(nargs * sizeof(uint64_t));
+					for (int i = 0; i < nargs; i++) {
+						args[i] = spy_pop_int(spy);
+					}
+					for (int i = 0; i < nargs; i++) {
+						spy_push_int(spy, args[i]);
+					}
+					free(args);
 				}
-				for (int i = 0; i < nargs; i++) {
-					spy_push_int(spy, args[i]);
-				}
-				free(args);
 				SpyCFunc* cfunc = NULL;
 				for (SpyCFuncList* i = spy->cfuncs; i; i = i->next) {
 					if (!i->cfunc) {

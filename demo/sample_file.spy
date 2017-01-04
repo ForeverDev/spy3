@@ -1,15 +1,17 @@
-print: cfunc (string: ^byte, number: int) -> void;
+print: cfunc (format: ^byte, ...) -> void;
+
+factorial: (n: int) -> int {
+	if (n <= 1) 
+		return 1;
+	return n * factorial(n - 1);
+}
 
 main: () -> void {
-	
-	format: ^byte;
-	number: int;
 
-	format = "hello, here is a number: %d\n";
-	number = 42;
+	n: int;
 
-	print(format, number);
+	n = 10;
 	
-	
+	print("factorial of %d is %d\n", n, factorial(n));
 }
 

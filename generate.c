@@ -30,8 +30,9 @@ struct CompileState {
 	unsigned int return_label;
 	unsigned int cont_label;
 	unsigned int break_label;
+	unsigned int bottom_label;
 	int exp_push; /* which writer function for generate_expression to use */
-	int cond_jmp; /* if 1, generate_expression will jump to break_label with a top-level comparison */
+	int cond_jmp; /* if 1, generate_expression will jump to bottom_label with a top-level comparison */
 	FILE* handle;
 };
 
@@ -135,7 +136,7 @@ popb(CompileState* C) {
 	while (tail->next) {
 		tail = tail->next;
 	}
-	
+
 	/* detach the tail, (pop it off) */
 	if (tail->prev) {
 		tail->prev->next = NULL;
@@ -229,10 +230,6 @@ static int
 advance(CompileState* C) {
 	TreeNode* focus = C->focus;
 	TreeNode* child;
-	/* if focus is a block without children, pop once */
-	if (focus->type == NODE_BLOCK && !focus->blockval->child) {
-		popb(C);
-	}
 	/* child? jump into it */
 	if ((child = get_child(focus))) {
 		C->focus = child;
@@ -244,9 +241,12 @@ advance(CompileState* C) {
 		return 1;
 	}
 	/* parent->next? */
+	C->focus = C->focus->parent;
 	while (C->focus) {
-		popb(C);
 		/* generate static strings if jumping out of function */
+		if (C->focus->type != NODE_BLOCK) {
+			popb(C);
+		}
 		if (C->focus->type == NODE_FUNC_IMPL) {
 			/* generate static labels */
 			int index = 0;
@@ -486,7 +486,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						if (C->cond_jmp && is_top) {
 							/* if it's a conditional expression and the cond operator is at
 							 * the top of the tree, a simple conditional jump can be generated */
-							writer(C, "j%s " FORMAT_LABEL, ins, C->break_label);
+							writer(C, "j%s " FORMAT_LABEL, ins, C->bottom_label);
 						} else {
 							writer(C, "p%s\n", ins);
 							writer(C, "%ctest", prefix); 
@@ -541,15 +541,21 @@ generate_condition(CompileState* C, ExpNode* condition) {
 
 static void
 generate_if(CompileState* C) {
-	C->break_label = C->label_count++;
+	C->bottom_label = C->label_count++;
+	writeb(C, "; if statement\n;\tbot: " FORMAT_LABEL "\n", C->bottom_label);
 	generate_condition(C, C->focus->ifval->condition);
-	pushb(C, FORMAT_DEF_LABEL, C->break_label);	
+	pushb(C, FORMAT_DEF_LABEL, C->bottom_label);	
 }
 
 static void
 generate_while(CompileState* C) {
 	C->cont_label = C->label_count++;
-	C->break_label = C->label_count++;
+	C->bottom_label = C->break_label = C->label_count++;
+	writeb(C, 
+		"; while loop\n;\ttop: " FORMAT_LABEL "\n;\tbot: " FORMAT_LABEL "\n",
+		C->cont_label,
+		C->bottom_label
+	);
 	writeb(C, FORMAT_DEF_LABEL, C->cont_label);
 	generate_condition(C, C->focus->whileval->condition);
 	pushb(C, "jmp " FORMAT_LABEL "\n", C->cont_label);
@@ -559,7 +565,12 @@ generate_while(CompileState* C) {
 static void
 generate_for(CompileState* C) {
 	C->cont_label = C->label_count++;
-	C->break_label = C->label_count++;
+	C->bottom_label = C->break_label = C->label_count++;
+	writeb(C, 
+		"; for loop\n;\ttop: " FORMAT_LABEL "\n;\tbot: " FORMAT_LABEL "\n",
+		C->cont_label,
+		C->bottom_label
+	);
 	generate_expression(C, C->focus->forval->init);
 	writeb(C, FORMAT_DEF_LABEL, C->cont_label);
 	generate_condition(C, C->focus->forval->condition);
@@ -690,6 +701,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 		VarDeclaration* var = i->decl;
 		Datatype* d = var->datatype;
 		if (d->type == DATA_FPTR && d->mods & MOD_CFUNC) {
+			char* d = tostring_datatype(var->datatype);
+			writeb(&C, "; %s: %s\n", var->name, d);
+			free(d);
 			writeb(&C, "%s: db \"%s\\0\"\n", var->name, var->name);
 		}
 	}

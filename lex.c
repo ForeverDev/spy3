@@ -45,6 +45,7 @@ static const TokenListing token_listing[] = {
 	{"->", SPEC_ARROW},
 	{"typename", SPEC_TYPENAME},
 	{"sizeof", SPEC_SIZEOF},
+	{"...", SPEC_DOTS},
 	{NULL, 0}
 };
 

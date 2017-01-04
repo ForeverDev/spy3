@@ -63,7 +63,7 @@ static void print_tree(TreeNode*, int);
 static void print_datatype(Datatype*, int);
 static void parse_die(ParseState*, const char*, ...);
 static void assert_operator(ParseState*, char);
-static void eat_operator(ParseState*, char);
+static void eat_op(ParseState*, char);
 static void mark_operator(ParseState*, char, char);
 static void append_node(ParseState*, TreeNode*);
 static int is_keyword(const char*);
@@ -82,7 +82,7 @@ parse_die(ParseState* P, const char* message, ...) {
 	va_start(args, message);	
 	printf("\n\n** SPYRE PARSE ERROR **\n\tmessage: ");
 	vprintf(message, args);
-	if (P->tokens) {
+	if (P->tokens && P->tokens->token) {
 		printf("\n\tline: %d\n", P->tokens->token->line);
 	}
 	printf("\n\n");
@@ -114,7 +114,7 @@ assert_operator(ParseState* P, char type) {
 
 /* this is just assert_operator and advance */
 static void
-eat_operator(ParseState* P, char type) {
+eat_op(ParseState* P, char type) {
 	assert_operator(P, type);
 	P->tokens = P->tokens->next;
 }
@@ -241,7 +241,7 @@ append_node(ParseState* P, TreeNode* node) {
 				break;
 			case NODE_FUNC_IMPL:
 				/* found function? reset offset */
-				P->current_offset = target->funcval->desc->fdesc->stack_space;
+				P->current_offset = target->funcval->desc->fdesc->arg_space;
 				P->current_function = target;
 				target->funcval->child = node;
 				break;
@@ -584,6 +584,12 @@ tostring_datatype(const Datatype* data) {
 					strcat(buf, ", ");
 				}
 			}
+			if (data->fdesc->vararg) {
+				if (data->fdesc->nargs > 0) {
+					strcat(buf, ", ");
+				}
+				strcat(buf, "...");
+			}
 			strcat(buf, ") -> ");
 			char* ret = tostring_datatype(data->fdesc->return_type);
 			sprintf(buf + strlen(buf), "%s", ret);
@@ -846,7 +852,24 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			}
 			
 			/* make sure number of args is correct */
-			if (call->nargs != desc->nargs) {
+			if (desc->vararg) {
+				if (call->nargs < desc->nargs) {
+					if (func_id) {
+						parse_die(P, 
+							"vararg function '%s' expected atleast %d arguments, got %d",
+							func_id,
+							desc->nargs,
+							call->nargs
+						);
+					} else {
+						parse_die(P, 
+							"vararg function expected atleast %d arguments, got %d",
+							desc->nargs,
+							call->nargs
+						);
+					}
+				}
+			} else if (call->nargs != desc->nargs) {
 				if (func_id) {
 					parse_die(P,
 						"incorrect number of arguments passed to function '%s'; expected %d, got %d",
@@ -918,11 +941,11 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					break;
 				}
 				default: {
+					const Datatype* left = typecheck_expression(P, exp->bval->left);
+					const Datatype* right = typecheck_expression(P, exp->bval->right);
 					if (exp->bval->optype == ',') {
 						return exp->eval = NULL;
 					}
-					const Datatype* left = typecheck_expression(P, exp->bval->left);
-					const Datatype* right = typecheck_expression(P, exp->bval->right);
 					int left_const = left->mods & MOD_CONST;
 					int is_assign = IS_ASSIGN(exp->bval);	
 					if (is_assign && left_const) {
@@ -1237,7 +1260,7 @@ parse_break(ParseState* P) {
 	node->type = NODE_BREAK;
 
 	P->tokens = P->tokens->next;
-	eat_operator(P, ';');
+	eat_op(P, ';');
 
 	append_node(P, node);
 }
@@ -1248,7 +1271,7 @@ parse_continue(ParseState* P) {
 	node->type = NODE_CONTINUE;
 
 	P->tokens = P->tokens->next;
-	eat_operator(P, ';');
+	eat_op(P, ';');
 
 	append_node(P, node);
 }
@@ -1294,17 +1317,25 @@ parse_function_descriptor(ParseState* P) {
 	fdesc->return_type = NULL;
 	fdesc->nargs = 0;
 	fdesc->stack_space = 0;
+	fdesc->arg_space = 0;
 	fdesc->is_global = 0;
+	fdesc->vararg = 0;
 
 	P->tokens = P->tokens->next; /* skip ( */
-	
+
 	while (!on_op(P, ')')) {
-		if (!matches_declaration(P)) {
+		if (!matches_declaration(P) && !on_op(P, SPEC_DOTS)) {
 			parse_die(P, "expected declaration in argument list");
 		}
+		if (on_op(P, SPEC_DOTS)) {
+			fdesc->vararg = 1;
+			P->tokens = P->tokens->next;
+			break;
+		}
 		VarDeclaration* arg = parse_declaration(P);
+		arg->offset = fdesc->arg_space;
 		fdesc->nargs++;
-		//fdesc->stack_space += arg->datatype->size;
+		fdesc->arg_space += arg->datatype->size;
 		if (!fdesc->arguments) {
 			fdesc->arguments = malloc(sizeof(VarDeclarationList));
 			fdesc->arguments->decl = arg;
@@ -1320,15 +1351,15 @@ parse_function_descriptor(ParseState* P) {
 			scan->next = new;
 		}
 		if (!on_op(P, ')')) {
-			eat_operator(P, ',');
+			eat_op(P, ',');
 			if (on_op(P, ')')) {
 				parse_die(P, "expected datatype after ','");
 			}
 		}
 	}
 
-	P->tokens = P->tokens->next; /* skip ) */
-	eat_operator(P, SPEC_ARROW);
+	eat_op(P, ')');
+	eat_op(P, SPEC_ARROW);
 	fdesc->return_type = parse_datatype(P);
 
 	return fdesc;
@@ -1448,7 +1479,7 @@ parse_datatype(ParseState* P) {
 			parse_die(P, "the modifier 'cfunc' can only be applied to functions");
 		}
 	}
-	
+
 	return data;
 
 }
@@ -1502,14 +1533,14 @@ parse_struct(ParseState* P) {
 	strcpy(str->name, P->tokens->token->sval);
 	P->tokens = P->tokens->next;
 
-	eat_operator(P, '{');
+	eat_op(P, '{');
 
 	/* get children */
 	while (matches_declaration(P)) {
 		VarDeclaration* field = parse_declaration(P);
 		field->offset = desc->size;
 		desc->size += field->datatype->size;
-		eat_operator(P, ';');
+		eat_op(P, ';');
 
 		VarDeclarationList* append = malloc(sizeof(VarDeclarationList));
 		append->decl = field;
@@ -1531,8 +1562,8 @@ parse_struct(ParseState* P) {
 		parse_die(P, "struct '%s' must have at least one field", str->name);
 	}
 
-	eat_operator(P, '}');
-	eat_operator(P, ';');
+	eat_op(P, '}');
+	eat_op(P, ';');
 
 	/* append the struct to list on knowns */
 	TreeStructList* append = malloc(sizeof(TreeStructList));
@@ -1574,7 +1605,7 @@ parse_if(ParseState* P) {
 
 	/* starts on token IF */
 	P->tokens = P->tokens->next; /* skip IF */
-	eat_operator(P, '(');
+	eat_op(P, '(');
 	mark_operator(P, '(', ')');
 	node->ifval->condition = parse_expression(P);
 	typecheck_expression(P, node->ifval->condition);
@@ -1593,7 +1624,7 @@ parse_while(ParseState* P) {
 
 	/* starts on token WHILE */
 	P->tokens = P->tokens->next; /* skip WHILE */
-	eat_operator(P, '(');
+	eat_op(P, '(');
 	mark_operator(P, '(', ')');
 	node->whileval->condition = parse_expression(P);
 	typecheck_expression(P, node->whileval->condition);
@@ -1612,7 +1643,7 @@ parse_for(ParseState* P) {
 	
 	/* starts on token FOR */
 	P->tokens = P->tokens->next; /* skip FOR */
-	eat_operator(P, '(');
+	eat_op(P, '(');
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->init = parse_expression(P);
 	typecheck_expression(P, node->forval->init);
@@ -1738,7 +1769,7 @@ generate_syntax_tree(TokenList* tokens) {
 				append_node(P, node);
 			} else {
 				register_local(P, var);
-				eat_operator(P, ';');
+				eat_op(P, ';');
 				P->current_offset += inc;
 				if (P->current_function) {
 					P->current_function->funcval->desc->fdesc->stack_space += inc;
@@ -1760,7 +1791,12 @@ generate_syntax_tree(TokenList* tokens) {
 		parse_die(P, "expected '}' before EOF");
 	}
 
-	print_debug_info(P);
+	/* make sure there is an entry point */
+	if (!find_function(P, "main")) {
+		parse_die(P, "function 'main' not found");
+	}
+
+	//print_debug_info(P);
 
 	/* TODO cleanup tokens + other stuff */
 

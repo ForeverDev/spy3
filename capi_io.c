@@ -5,8 +5,8 @@
 
 static spy_int 
 io_print(SpyState* spy) {
-	spy_string format = spy_gets(spy, spy_pop_int(spy));
-	printf("FORMAT %s\n", format);
+	spy_int format_addr = spy_pop_int(spy);
+	spy_string format = spy_gets(spy, format_addr);
 	spy_int length = 0; /* total characters printed */
 	while (*format) {
 		switch (*format) {

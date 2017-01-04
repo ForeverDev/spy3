@@ -125,9 +125,11 @@ struct ExpNode {
 };
 
 struct FunctionDescriptor {
-	unsigned int nargs;
 	unsigned int stack_space;
-	unsigned int is_global;
+	unsigned int arg_space;
+	int is_global;
+	int nargs;
+	int vararg;
 	VarDeclarationList* arguments;
 	Datatype* return_type;
 };
