@@ -277,34 +277,38 @@ advance(CompileState* C) {
 static void
 generate_expression(CompileState* C, ExpNode* exp) {
 	if (!exp) return;
+	ExpNode* parent = exp->parent;
 	void (*writer)(CompileState*, const char*, ...); 
-	int is_top = exp->parent == NULL;
+	int is_top = parent == NULL;
 	int is_assign;
 	if (C->exp_push) {
 		writer = pushb;
 	} else {
 		writer = writeb;
 	}
-	if (exp->parent) {
-		is_assign = IS_ASSIGN(exp->parent->bval);
+	if (parent) {
+		is_assign = IS_ASSIGN(parent->bval);
 	} else {
 		is_assign = 0;
 	}
 	int dont_der = (
-		exp->parent &&
-		exp->parent->type == EXP_BINARY &&
-		IS_ASSIGN(exp->parent->bval) &&
+		parent &&
+		parent->type == EXP_BINARY &&
+		IS_ASSIGN(parent->bval) &&
 		exp->side == LEAF_LEFT
 	);
 	/* don't dereference dot chain on left side of assignment operator */
-	if (exp->parent && exp->parent->type == EXP_BINARY && exp->parent->bval->optype == '.' && exp->side == LEAF_LEFT) {
-		ExpNode* scan = exp->parent;
+	if (parent && parent->type == EXP_BINARY && parent->bval->optype == '.' && exp->side == LEAF_LEFT) {
+		ExpNode* scan = parent;
 		while (scan && scan->type == EXP_BINARY && scan->bval->optype == '.') {
 			scan = scan->parent;
 		}
 		if (scan && scan->type == EXP_BINARY && IS_ASSIGN(scan->bval)) {
 			dont_der = 1;
 		}
+	}
+	if (parent && parent->type == EXP_UNARY && parent->uval->optype == '@') {
+		dont_der = 1;
 	}
 	switch (exp->type) {
 		case EXP_INTEGER:
@@ -362,7 +366,21 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					writer(C, "ccall 0x%x\n", call->nargs);
 				}
 			} else {
-				writer(C, "call " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
+				VarDeclaration* f = get_local(C, call->fptr->sval);
+				if (f->datatype->mods & MOD_CFUNC) {
+					writer(C, "cfcall " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
+				} else {
+					writer(C, "call " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
+				}
+			}
+			break;
+		}
+		case EXP_UNARY: {
+			ExpNode* operand = exp->uval->operand;
+			generate_expression(C, operand);
+			if (exp->uval->optype == '$') {
+				int prefix = get_prefix(operand->eval);
+				writer(C, "%cder\n", prefix);
 			}
 			break;
 		}
@@ -498,9 +516,6 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			}
 			break;
 		}
-		case EXP_UNARY:
-			generate_expression(C, exp->uval->operand);
-			break;
 		default:
 			return;	
 	}
@@ -621,7 +636,7 @@ generate_function(CompileState* C) {
 	writeb(C, "\n");
 	free(header);
 	writeb(C, "; return label: " FORMAT_LABEL "\n", C->return_label);
-	writeb(C, "; stack space: %d bytes\n", C->focus->funcval->desc->fdesc->stack_space);
+	writeb(C, "; reserved space: %d bytes\n", C->focus->funcval->desc->fdesc->stack_space);
 	writeb(C, "; stack map:\n");
 	print_stack_map(C, C->focus);
 

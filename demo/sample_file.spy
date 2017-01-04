@@ -1,3 +1,10 @@
+/* recursive function testing */
+
+struct NestedFunction {
+	function: (a: int) -> int;
+	n: int;
+};
+
 print: cfunc (format: ^byte, ...) -> void;
 
 factorial: (n: int) -> int {
@@ -6,12 +13,36 @@ factorial: (n: int) -> int {
 	return n * factorial(n - 1);
 }
 
+fib: (n: int) -> int {
+	if (n <= 2) 
+		return 1;
+	return fib(n - 1) + fib(n - 2);
+}
+
+square: (n: int) -> int {
+	return n * n;
+}
+
+greater: (a: int, b: int) -> int {
+	if (a > b) return a;
+	return b;
+}
+
 main: () -> void {
 
-	n: int;
+	foo: NestedFunction;
 
-	n = 10;
-	
-	print("factorial of %d is %d\n", n, factorial(n));
+	foo.n = 6;
+
+	foo.function = factorial;
+	print("fact(%d) = %d\n", foo.n, foo.function(foo.n));
+
+	foo.function = fib;
+	print("fib(%d)  = %d\n", foo.n, foo.function(foo.n));
+
+	foo.function = square;
+	print("%d^2     = %d\n", foo.n, foo.function(foo.n));
+
+	print("greater of 5 and 6 is %d\n", greater(5, 6));
 }
 

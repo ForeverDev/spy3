@@ -32,6 +32,10 @@
 						) \
 					)
 
+#define IS_LITERAL(d) ((d)->type == DATA_INTEGER || \
+					   (d)->type == DATA_FLOAT || \
+					   (d)->type == DATA_STRING)
+
 
 
 typedef struct TreeNode TreeNode;

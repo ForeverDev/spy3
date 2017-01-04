@@ -715,6 +715,17 @@ find_function(ParseState* P, const char* name) {
 	return NULL;
 }
 
+static int
+is_cfunc(ParseState* P, const char* name) {
+	for (VarDeclarationList* i = P->root_node->blockval->locals; i; i = i->next) {
+		VarDeclaration* var = i->decl;
+		if (!strcmp(var->name, name) && var->datatype->type == DATA_FPTR && var->datatype->mods & MOD_CFUNC) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static VarDeclaration*
 find_local(ParseState* P, const char* name) {
 	for (TreeNode* i = P->current_block; i; i = i->parent) {
@@ -790,6 +801,7 @@ types_match(const Datatype* a, const Datatype* b) {
 	return 1;
 }
 
+
 static const Datatype*
 typecheck_expression(ParseState* P, ExpNode* exp) {
 	if (!exp) return NULL;
@@ -803,7 +815,38 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 		case EXP_STRING:
 			return exp->eval = P->type_string;
 		case EXP_UNARY:
-			return exp->eval = typecheck_expression(P, exp->uval->operand);
+			switch (exp->uval->optype) {
+				case '@': {
+					const Datatype* result = typecheck_expression(P, exp->uval->operand);
+					/*
+					if (IS_LITERAL(result)) {
+						parse_die(P, "attempt to take the address of a literal value");
+					}
+					*/
+					Datatype* d = malloc(sizeof(Datatype));
+					memcpy(d, result, sizeof(Datatype));
+					d->ptr_dim++;
+					return exp->eval = d;
+				}
+				case '$': {
+					const Datatype* result = typecheck_expression(P, exp->uval->operand);
+					/*
+					if (IS_LITERAL(result)) {
+						parse_die(P, "attempt to dereference a literal value");
+					}
+					*/
+					if (result->ptr_dim == 0) {
+						parse_die(P, "attempt to dereference a non-pointer");
+					}
+					Datatype* d = malloc(sizeof(Datatype));
+					memcpy(d, result, sizeof(Datatype));
+					d->ptr_dim--;
+					return exp->eval = d;
+				}
+				default:
+					return exp->eval = typecheck_expression(P, exp->uval->operand);
+			}
+			break;
 		case EXP_IDENTIFIER: {
 			/* TODO handle parent being '.' */
 			VarDeclaration* var = find_local(P, exp->sval);
@@ -1004,8 +1047,8 @@ parse_expression(ParseState* P) {
 		['*']				= {9, ASSOC_LEFT, OP_BINARY},
 		['%']				= {9, ASSOC_LEFT, OP_BINARY},
 		['/']				= {9, ASSOC_LEFT, OP_BINARY},
-		['&']				= {10, ASSOC_RIGHT, OP_UNARY},
-		['^']				= {10, ASSOC_RIGHT, OP_UNARY},
+		['@']				= {10, ASSOC_RIGHT, OP_UNARY},
+		['$']				= {10, ASSOC_RIGHT, OP_UNARY},
 		['!']				= {10, ASSOC_RIGHT, OP_UNARY},
 		[SPEC_TYPENAME]		= {10, ASSOC_RIGHT, OP_UNARY},
 		['.']				= {11, ASSOC_LEFT, OP_BINARY},
@@ -1080,6 +1123,8 @@ parse_expression(ParseState* P) {
 				expstack_push(&postfix, expstack_pop(&operators));
 			}
 			expstack_push(&operators, push);
+		} else if (tok->type == TOK_OPERATOR && tok->oval == '[') {
+			/* TODO implement array indexing */	
 		} else if (tok->type == TOK_OPERATOR) {
 			/* use assoc to make sure it exists */
 			if (prec[tok->oval].assoc) {
@@ -1204,7 +1249,8 @@ parse_expression(ParseState* P) {
 		} else if (at->type == EXP_CALL) {
 			at->cval->fptr = expstack_pop(&tree);
 			at->cval->computed = 1; /* assume computed at first */
-			if (at->cval->fptr->type == EXP_IDENTIFIER && find_function(P, at->cval->fptr->sval)) {
+			char* name = at->cval->fptr->sval;
+			if (at->cval->fptr->type == EXP_IDENTIFIER && (find_function(P, name) || is_cfunc(P, name))) {
 				at->cval->computed = 0;
 			}
 			expstack_push(&tree, at);

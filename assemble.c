@@ -190,6 +190,7 @@ void generate_bytecode(const char* infile, const char* outfile) {
 				} else if (A.tokens->next->token->type == ASMTOK_STRING) {
 					const char* str = A.tokens->next->token->sval;
 					size_t len = strlen(str);
+					int start = cindex;
 					for (size_t i = 0; i < len; i++) {
 						switch (str[i]) {
 							case '\\':
