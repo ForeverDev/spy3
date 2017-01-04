@@ -1,48 +1,36 @@
-/* recursive function testing */
+struct Name {
+	first: ^byte;
+	last: ^byte;
+};
 
-struct NestedFunction {
-	function: (a: int) -> int;
-	n: int;
+struct Person {
+	name: Name;
+	age: int;
 };
 
 print: cfunc (format: ^byte, ...) -> void;
 
-factorial: (n: int) -> int {
-	if (n <= 1) 
-		return 1;
-	return n * factorial(n - 1);
+print_person: (person: Person) -> void {
+	print(
+		"%s %s is %d years old\n",
+		person.name.first,
+		person.name.last,
+		person.age
+	); 
 }
 
-fib: (n: int) -> int {
-	if (n <= 2) 
-		return 1;
-	return fib(n - 1) + fib(n - 2);
-}
-
-square: (n: int) -> int {
-	return n * n;
-}
-
-greater: (a: int, b: int) -> int {
-	if (a > b) return a;
-	return b;
+grow_person: (person: Person, years: int) -> void {
+	person.age += years;
 }
 
 main: () -> void {
 
-	foo: NestedFunction;
+	tom: Person;
+	tom.name.first = "Tom";
+	tom.name.last = "Cook";
+	tom.age = 18;
 
-	foo.n = 6;
+	print_person(tom);
 
-	foo.function = factorial;
-	print("fact(%d) = %d\n", foo.n, foo.function(foo.n));
 
-	foo.function = fib;
-	print("fib(%d)  = %d\n", foo.n, foo.function(foo.n));
-
-	foo.function = square;
-	print("%d^2     = %d\n", foo.n, foo.function(foo.n));
-
-	print("greater of 5 and 6 is %d\n", greater(5, 6));
 }
-

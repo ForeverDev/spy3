@@ -1382,6 +1382,11 @@ parse_function_descriptor(ParseState* P) {
 		arg->offset = fdesc->arg_space;
 		fdesc->nargs++;
 		fdesc->arg_space += arg->datatype->size;
+		if (arg->datatype->type == DATA_STRUCT && arg->datatype->ptr_dim == 0) {
+			/* an extra 8 bytes are needed for a struct because it is implemented
+			 * on the stack with a pointer */
+			 fdesc->arg_space += 8;
+		}
 		if (!fdesc->arguments) {
 			fdesc->arguments = malloc(sizeof(VarDeclarationList));
 			fdesc->arguments->decl = arg;
@@ -1777,6 +1782,10 @@ generate_syntax_tree(TokenList* tokens) {
 				if (var->datatype->mods & MOD_CFUNC && P->current_block != P->root_node) {
 					parse_die(P, "cfunctions must be declared in the global scope");
 				}	
+			} else {
+				if (!var->datatype->mods & MOD_STATIC && P->current_block == P->root_node) {
+					parse_die(P, "variables declared in the global scope must be declared static");
+				}
 			}
 			if (var->datatype->type == DATA_FPTR && on_op(P, '{')) {
 
