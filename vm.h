@@ -39,6 +39,7 @@ struct SpyState {
 	SpyCFuncList* cfuncs;
 	MemoryBlockList* memory_map;
 	uint16_t flags;
+	int bail;
 };
 
 struct SpyCFunc {

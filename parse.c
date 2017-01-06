@@ -28,6 +28,7 @@ struct OpEntry {
 
 /* parse functions */
 static void parse_if(ParseState*);
+static void parse_else(ParseState*);
 static void parse_while(ParseState*);
 static void parse_for(ParseState*);
 static void parse_block(ParseState*);
@@ -76,6 +77,7 @@ static TreeStruct* find_struct(ParseState*, const char*);
 static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
 static VarDeclaration* find_field(const TreeStruct*, const char*);
+static TreeNode* empty_node();
 
 static const OpEntry prec[127] = {
 	[',']				= {1, ASSOC_LEFT, OP_BINARY},
@@ -157,6 +159,16 @@ is_typename(const char* word) {
 		}
 	}
 	return 0;
+}
+
+static TreeNode*
+empty_node() {
+	TreeNode* node = malloc(sizeof(TreeNode));
+	node->parent = NULL;
+	node->next = NULL;
+	node->prev = NULL;
+	node->is_else = 0;
+	return node;
 }
 
 static void
@@ -1687,6 +1699,7 @@ parse_if(ParseState* P) {
 	node->type = NODE_IF;
 	node->ifval = malloc(sizeof(TreeIf));
 	node->ifval->child = NULL;
+	node->ifval->has_else = 0;
 
 	/* starts on token IF */
 	P->tokens = P->tokens->next; /* skip IF */
@@ -1697,6 +1710,11 @@ parse_if(ParseState* P) {
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
+
+}
+
+static void
+parse_else(ParseState* P) {
 
 }
 
@@ -1791,6 +1809,8 @@ generate_syntax_tree(TokenList* tokens) {
 	while (P->tokens && P->tokens->token) {
 		if (on_ident(P, "if")) {
 			parse_if(P);
+		} else if (on_ident(P, "else")) {
+			parse_else(P);
 		} else if (on_ident(P, "while")) {
 			parse_while(P);
 		} else if (on_ident(P, "for")) {
@@ -1885,7 +1905,7 @@ generate_syntax_tree(TokenList* tokens) {
 		parse_die(P, "function 'main' not found");
 	}
 
-	//print_debug_info(P);
+	print_debug_info(P);
 
 	/* TODO cleanup tokens + other stuff */
 

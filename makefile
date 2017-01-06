@@ -1,6 +1,6 @@
 CC = gcc
 CF = -std=c11 -g -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-switch -O0
-OBJ = build/main.o build/vm.o build/asmlex.o build/assemble.o build/spylib.o build/capi_io.o build/capi_load.o build/capi_math.o build/lex.o build/parse.o build/generate.o
+OBJ = build/main.o build/vm.o build/asmlex.o build/assemble.o build/spylib.o build/capi_io.o build/capi_load.o build/capi_math.o build/lex.o build/parse.o build/generate.o build/capi_std.o
 
 all: spy.exe
 
@@ -48,6 +48,9 @@ build/capi_math.o:
 
 build/capi_load.o:
 	$(CC) $(CF) -c capi_load.c -o build/capi_load.o
+
+build/capi_std.o:
+	$(CC) $(CF) -c capi_std.c -o build/capi_std.o
 
 build/main.o:
 	$(CC) $(CF) -c main.c -o build/main.o

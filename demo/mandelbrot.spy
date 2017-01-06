@@ -1,5 +1,8 @@
+/* c function declarations */
 print: cfunc (format: ^byte, ...) -> void;
+quit: cfunc () -> void;
 
+/* maps number n from range [a, b] to range [c, d] */
 map: (n: float, a: float, b: float, c: float, d: float) -> float {
 	return (n - a) / (b - a) * (d - c) + c;
 }
@@ -11,6 +14,7 @@ generate_mandelbrot: (px: int, py: int,
 	
 	i: int;
 	j: int;
+	total: int;
 
 	for (j = 0; j < px; j += 1) {
 		for (i = 0; i < py; i += 1) {
@@ -22,7 +26,7 @@ generate_mandelbrot: (px: int, py: int,
 			iter: int;
 
 			cx = map(#float i, 0.0, #float (px - 1), minx, maxx);
-			cy = map(#float j, 0.0, #float (py - 1), miny, maxy);	
+			cy = map(#float j, 0.0, #float (py - 1), miny, maxy);
 			zx = 0.0;
 			zy = 0.0;
 			iter = 0;
@@ -36,6 +40,8 @@ generate_mandelbrot: (px: int, py: int,
 				iter += 1;
 			}
 
+			total += iter;
+
 			if (iter == maxiter)
 				print("  ");
 			if (iter != maxiter) 
@@ -44,6 +50,8 @@ generate_mandelbrot: (px: int, py: int,
 		}
 		print("\n");
 	}
+
+	print("total iterations: %d\n", total);
 
 }
 
@@ -57,7 +65,7 @@ main: () -> void {
 	min_y: float;
 	max_y: float; 
 
-	max_iter = 100;
+	max_iter = 1000;
 	screen_x = 40;
 	screen_y = 40;
 	min_x = 0.0 - 1.5;

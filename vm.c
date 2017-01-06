@@ -124,6 +124,7 @@ spy_init() {
 	spy->sp = NULL;
 	spy->bp = NULL;
 	spy->code = NULL;
+	spy->bail = 0;
 
 	/* zero flags */
 	spy->flags = 0;
@@ -349,6 +350,10 @@ spy_execute(const char* filename) {
 		 * note: 24 is the maximum stack space that an instruction requires */
 		if (&spy->memory[SIZE_STACK + SIZE_CODE] - spy->sp <= 24) {
 			spy_die("stack overflow");
+		}
+
+		if (spy->bail) {
+			break;
 		}
 
 		opcode = spy_code_int8();

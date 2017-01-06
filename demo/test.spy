@@ -1,0 +1,9 @@
+print: cfunc (format: ^byte, ...) -> void;
+
+main: () -> void {
+
+	x: int;
+
+	
+
+}

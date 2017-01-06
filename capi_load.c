@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include "capi_io.h"
 #include "capi_load.h"
+#include "capi_std.h"
+#include "capi_math.h"
 
 static void
 append_cfunc(SpyState* spy, SpyCFunc* cfunc) {
@@ -27,4 +29,6 @@ register_array(SpyState* spy, SpyCFunc cfuncs[]) {
 
 void spy_init_capi(SpyState* spy) {
 	register_array(spy, capi_io); 
+	register_array(spy, capi_std);
+	register_array(spy, capi_math);
 }

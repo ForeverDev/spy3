@@ -5,8 +5,8 @@
 #include "spy_types.h"
 
 #define MOD_STATIC (0x1 << 0)
-#define MOD_CONST (0x1 << 1)
-#define MOD_CFUNC (0x1 << 2)
+#define MOD_CONST  (0x1 << 1)
+#define MOD_CFUNC  (0x1 << 2)
 
 /* t is a bval node */
 #define IS_ASSIGN(t) ((t)->optype == '=' || \
@@ -221,6 +221,7 @@ struct TreeBlock {
 struct TreeIf {
 	ExpNode* condition;
 	TreeNode* child;	
+	int has_else;
 };
 
 struct TreeWhile {
@@ -256,6 +257,9 @@ struct TreeStructList {
 };
 
 struct TreeNode {
+	/* an else statement doesn't evaluate to an actual node... rather,
+	 * if a token follows an else token, its is_else field is marked 1 */
+	int is_else;
 	TreeNode* parent;
 	TreeNode* next;
 	TreeNode* prev;
@@ -284,6 +288,7 @@ struct ParseState {
 	Datatype* type_string;
 	TreeStructList* defined_structs;
 	unsigned int current_offset;
+	int next_is_else;
 };
 
 
