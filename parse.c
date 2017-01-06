@@ -78,6 +78,7 @@ static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
 static VarDeclaration* find_field(const TreeStruct*, const char*);
 static TreeNode* empty_node();
+static void condense_expression(ParseState*, ExpNode*);
 
 static const OpEntry prec[127] = {
 	[',']				= {1, ASSOC_LEFT, OP_BINARY},
@@ -1317,7 +1318,11 @@ parse_expression(ParseState* P) {
 					parse_die(P, malformed);
 				}
 				leaf[j]->parent = at;
-				leaf[j]->side = j == 1 ? LEAF_LEFT : LEAF_RIGHT;
+				if (j == 1) {
+					leaf[j]->side = LEAF_LEFT;
+				} else {
+					leaf[j]->side = LEAF_RIGHT;
+				}
 			}
 			/* swap order */
 			at->bval->left = leaf[1];
@@ -1335,6 +1340,56 @@ parse_expression(ParseState* P) {
 
 	return ret;
 
+}
+
+static void
+condense_expression(ParseState* P, ExpNode* exp) {
+	if (!exp) return;
+	switch (exp->type) {
+		case EXP_BINARY: {	
+			ExpNode* lhs = exp->bval->left;
+			ExpNode* rhs = exp->bval->right;
+			int li, lf, ri, rf;
+			condense_expression(P, lhs);
+			condense_expression(P, rhs);
+			/* re-evaluate */
+			li = lhs->type == EXP_INTEGER;
+			lf = lhs->type == EXP_FLOAT;
+			ri = rhs->type == EXP_INTEGER;
+			rf = rhs->type == EXP_FLOAT;
+			/* only condense if both are literals that are of the same type */
+			if (li && ri) {
+				spy_int result;
+				spy_int l = lhs->ival;
+				spy_int r = rhs->ival;
+				switch (exp->bval->optype) {
+					case '+':
+						result = l + r;
+						break;
+					case '-':
+						result = l - r;
+						break;
+					case '*':
+						result = l * r;
+						break;
+					case '/':
+						result = l / r;
+						break;
+				}
+				/* cleanup children that are not needed anymore */
+				free(exp->bval);
+				exp->type = EXP_INTEGER;
+				exp->ival = result;
+				free(lhs);
+				free(rhs);
+			} else if (lf && rf) {
+				exp->type = EXP_FLOAT;
+			} else {
+				
+			}
+			break;	
+		}
+	}
 }
 
 static void
@@ -1688,6 +1743,7 @@ parse_statement(ParseState* P) {
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
+	condense_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 
 	append_node(P, node);

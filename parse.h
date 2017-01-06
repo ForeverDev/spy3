@@ -172,7 +172,8 @@ struct Datatype {
 
 	/* number of bytes needed to store a variable of this type...
 	 * NOTE: when the res instructions is used, the number of bytes reserved
-	 * is (sum locals in function) rounded up to nearest multiple of 8 (for stack alignment)
+	 * is (sum locals in function) rounded up to nearest multiple of 8 
+	 * (for stack alignment)
 	 *
 	 * a few constants: 
 	 *   int:	size=8
