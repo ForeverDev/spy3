@@ -25,6 +25,7 @@ struct OpEntry {
 	} operands;
 };
 
+
 /* parse functions */
 static void parse_if(ParseState*);
 static void parse_while(ParseState*);
@@ -75,6 +76,46 @@ static TreeStruct* find_struct(ParseState*, const char*);
 static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
 static VarDeclaration* find_field(const TreeStruct*, const char*);
+
+static const OpEntry prec[127] = {
+	[',']				= {1, ASSOC_LEFT, OP_BINARY},
+	['=']				= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_INC_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_DEC_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_MUL_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_DIV_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_MOD_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_SHL_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_SHR_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_AND_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_OR_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_XOR_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
+	[SPEC_LOG_AND]		= {3, ASSOC_LEFT, OP_BINARY},
+	[SPEC_LOG_OR]		= {3, ASSOC_LEFT, OP_BINARY},
+	[SPEC_EQ]			= {4, ASSOC_LEFT, OP_BINARY},
+	[SPEC_NEQ]			= {4, ASSOC_LEFT, OP_BINARY},
+	['>']				= {6, ASSOC_LEFT, OP_BINARY},
+	[SPEC_GE]			= {6, ASSOC_LEFT, OP_BINARY},
+	['<']				= {6, ASSOC_LEFT, OP_BINARY},
+	[SPEC_LE]			= {6, ASSOC_LEFT, OP_BINARY},
+	['|']				= {7, ASSOC_LEFT, OP_BINARY},
+	[SPEC_SHL]			= {7, ASSOC_LEFT, OP_BINARY},
+	[SPEC_SHR]			= {7, ASSOC_LEFT, OP_BINARY},
+	['+']				= {8, ASSOC_LEFT, OP_BINARY},
+	['-']				= {8, ASSOC_LEFT, OP_BINARY},
+	['*']				= {9, ASSOC_LEFT, OP_BINARY},
+	['%']				= {9, ASSOC_LEFT, OP_BINARY},
+	['/']				= {9, ASSOC_LEFT, OP_BINARY},
+	['@']				= {10, ASSOC_RIGHT, OP_UNARY},
+	['$']				= {10, ASSOC_RIGHT, OP_UNARY},
+	['!']				= {10, ASSOC_RIGHT, OP_UNARY},
+	[SPEC_TYPENAME]		= {10, ASSOC_RIGHT, OP_UNARY},
+	[SPEC_CAST]			= {10, ASSOC_RIGHT, OP_UNARY},
+	['.']				= {11, ASSOC_LEFT, OP_BINARY},
+	[SPEC_INC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
+	[SPEC_DEC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
+	[SPEC_CALL]			= {11, ASSOC_LEFT, OP_UNARY}
+};
 
 static void
 parse_die(ParseState* P, const char* message, ...) {
@@ -476,6 +517,13 @@ print_expression(ExpNode* exp, int indent) {
 			print_expression(exp->cval->fptr, indent + 1);
 			print_expression(exp->cval->arguments, indent + 1);
 			break;
+		case EXP_CAST: {
+			char* d = tostring_datatype(exp->cxval->d);
+			printf("# %s\n", d);
+			free(d);	
+			print_expression(exp->cxval->operand, indent + 1);
+			break;
+		}
 	}
 }
 
@@ -855,6 +903,11 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			}
 			return exp->eval = var->datatype;
 		}
+		case EXP_CAST: {
+			const Datatype* op = typecheck_expression(P, exp->cxval->operand);
+
+			return exp->eval = exp->cxval->d;
+		}
 		case EXP_CALL: {
 			FunctionDescriptor* desc = NULL;
 			const char* func_id = NULL;
@@ -994,7 +1047,14 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					if (is_assign && left_const) {
 						parse_die(P, "attempt to assign to a const memory address");
 					}
-					if (!types_match(left, right)) {
+					int lf = left->type == DATA_FLOAT && left->ptr_dim == 0;
+					int li = left->type == DATA_INT && left->ptr_dim == 0;
+					int rf = right->type == DATA_FLOAT && right->ptr_dim == 0;
+					int ri = right->type == DATA_INT && right->ptr_dim == 0;
+					/*
+					if ((lf && ri) || (rf && li)) {
+							
+					} else */ if (!types_match(left, right)) {
 						parse_die(P, 
 							"attempt to use operator (%s) on mismatched types '%s' and '%s'", 
 							tokcode_tostring(exp->bval->optype),
@@ -1010,6 +1070,41 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 	return NULL;
 }
 
+static void
+shunting_pops(ExpStack** postfix, ExpStack** operators, const OpEntry* info) {
+	ExpNode* top;
+	while (1) {
+		top = expstack_top(operators);
+		if (!top) break;
+		int top_is_unary = top->type == EXP_UNARY;
+		int top_is_binary = top->type == EXP_BINARY;
+		int top_is_call = top->type == EXP_CALL;
+		int top_is_cast = top->type == EXP_CAST;
+		const OpEntry* top_info;
+		if (top_is_unary) {
+			/* unary operator is on top of stack */
+			top_info = &prec[top->uval->optype];
+		} else if (top_is_binary) {
+			/* binary operator is on top of stack */
+			top_info = &prec[top->bval->optype];
+		} else if (top_is_call) {
+			top_info = &prec[SPEC_CALL];
+		} else if (top_is_cast) {
+			top_info = &prec[SPEC_CAST];
+		}
+		/* found open parenthesis, break */
+		if (top_is_unary && top->uval->optype == '(') {
+			break;
+		}
+		if (info->assoc == ASSOC_LEFT) {
+			if (info->prec > top_info->prec) break;
+		} else {
+			if (info->prec >= top_info->prec) break;
+		}
+		expstack_push(postfix, expstack_pop(operators));
+	}
+}
+
 /* expects end of exprecsion to be marked... NOT inclusive */
 static ExpNode*
 parse_expression(ParseState* P) {
@@ -1017,45 +1112,6 @@ parse_expression(ParseState* P) {
 	/* first, this function links ExpNodes together via a stack (ExpStack)
 	 * next, the stacks are converted into a tree and linked together by the
 	 * proper fields in the actual ExpNode object */
-
-	static const OpEntry prec[127] = {
-		[',']				= {1, ASSOC_LEFT, OP_BINARY},
-		['=']				= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_INC_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_DEC_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_MUL_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_DIV_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_MOD_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_SHL_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_SHR_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_AND_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_OR_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_XOR_BY]		= {2, ASSOC_RIGHT, OP_BINARY},
-		[SPEC_LOG_AND]		= {3, ASSOC_LEFT, OP_BINARY},
-		[SPEC_LOG_OR]		= {3, ASSOC_LEFT, OP_BINARY},
-		[SPEC_EQ]			= {4, ASSOC_LEFT, OP_BINARY},
-		[SPEC_NEQ]			= {4, ASSOC_LEFT, OP_BINARY},
-		['>']				= {6, ASSOC_LEFT, OP_BINARY},
-		[SPEC_GE]			= {6, ASSOC_LEFT, OP_BINARY},
-		['<']				= {6, ASSOC_LEFT, OP_BINARY},
-		[SPEC_LE]			= {6, ASSOC_LEFT, OP_BINARY},
-		['|']				= {7, ASSOC_LEFT, OP_BINARY},
-		[SPEC_SHL]			= {7, ASSOC_LEFT, OP_BINARY},
-		[SPEC_SHR]			= {7, ASSOC_LEFT, OP_BINARY},
-		['+']				= {8, ASSOC_LEFT, OP_BINARY},
-		['-']				= {8, ASSOC_LEFT, OP_BINARY},
-		['*']				= {9, ASSOC_LEFT, OP_BINARY},
-		['%']				= {9, ASSOC_LEFT, OP_BINARY},
-		['/']				= {9, ASSOC_LEFT, OP_BINARY},
-		['@']				= {10, ASSOC_RIGHT, OP_UNARY},
-		['$']				= {10, ASSOC_RIGHT, OP_UNARY},
-		['!']				= {10, ASSOC_RIGHT, OP_UNARY},
-		[SPEC_TYPENAME]		= {10, ASSOC_RIGHT, OP_UNARY},
-		['.']				= {11, ASSOC_LEFT, OP_BINARY},
-		[SPEC_INC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
-		[SPEC_DEC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
-		[SPEC_CALL]			= {11, ASSOC_LEFT, OP_UNARY}
-	};
 
 	ExpStack* operators = NULL;	
 	ExpStack* postfix = NULL;
@@ -1092,71 +1148,27 @@ parse_expression(ParseState* P) {
 			push->cval->computed = 0;
 			/* revert mark */
 			P->marked = marksave;
-			ExpNode* top;
 			const OpEntry* info = &prec[SPEC_CALL];
-			/* TODO !!!get rid of repetition!!! */
-			while (1) {
-				top = expstack_top(&operators);
-				if (!top) break;
-				int top_is_unary = top->type == EXP_UNARY;
-				int top_is_binary = top->type == EXP_BINARY;
-				int top_is_call = top->type == EXP_CALL;
-				const OpEntry* top_info;
-				if (top_is_unary) {
-					/* unary operator is on top of stack */
-					top_info = &prec[top->uval->optype];
-				} else if (top_is_binary) {
-					/* binary operator is on top of stack */
-					top_info = &prec[top->bval->optype];
-				} else if (top_is_call) {
-					top_info = &prec[SPEC_CALL];
-				}
-				/* found open parenthesis, break */
-				if (top_is_unary && top->uval->optype == '(') {
-					break;
-				}
-				if (info->assoc == ASSOC_LEFT) {
-					if (info->prec > top_info->prec) break;
-				} else {
-					if (info->prec >= top_info->prec) break;
-				}
-				expstack_push(&postfix, expstack_pop(&operators));
-			}
+			shunting_pops(&postfix, &operators, info);
 			expstack_push(&operators, push);
 		} else if (tok->type == TOK_OPERATOR && tok->oval == '[') {
 			/* TODO implement array indexing */	
+		} else if (tok->type == TOK_OPERATOR && tok->oval == '#') {
+			P->tokens = P->tokens->next;
+			if (!matches_datatype(P)) {
+				parse_die(P, "expected datatype to follow token '#'");
+			}
+			shunting_pops(&postfix, &operators, &prec[SPEC_CAST]);
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->type = EXP_CAST;
+			push->cxval = malloc(sizeof(Cast));
+			push->cxval->d = parse_datatype(P);
+			expstack_push(&operators, push);
 		} else if (tok->type == TOK_OPERATOR) {
 			/* use assoc to make sure it exists */
 			if (prec[tok->oval].assoc) {
-				ExpNode* top;
 				const OpEntry* info = &prec[tok->oval];
-				while (1) {
-					top = expstack_top(&operators);
-					if (!top) break;
-					int top_is_unary = top->type == EXP_UNARY;
-					int top_is_binary = top->type == EXP_BINARY;
-					int top_is_call = top->type == EXP_CALL;
-					const OpEntry* top_info;
-					if (top_is_unary) {
-						/* unary operator is on top of stack */
-						top_info = &prec[top->uval->optype];
-					} else if (top_is_binary) {
-						/* binary operator is on top of stack */
-						top_info = &prec[top->bval->optype];
-					} else if (top_is_call) {
-						top_info = &prec[SPEC_CALL];
-					}
-					/* found open parenthesis, break */
-					if (top_is_unary && top->uval->optype == '(') {
-						break;
-					}
-					if (info->assoc == ASSOC_LEFT) {
-						if (info->prec > top_info->prec) break;
-					} else {
-						if (info->prec >= top_info->prec) break;
-					}
-					expstack_push(&postfix, expstack_pop(&operators));
-				}
+				shunting_pops(&postfix, &operators, info);
 				ExpNode* push = malloc(sizeof(ExpNode));
 				push->parent = NULL;
 				if (info->operands == OP_BINARY) {
@@ -1235,6 +1247,12 @@ parse_expression(ParseState* P) {
 	/* === STAGE TWO ===
 	 * convert from postix to a tree
 	 */
+	
+	printf("---------;\n");
+	for (ExpStack* i = postfix; i; i = i->next) {
+		print_expression(i->node, 0);
+	}
+	printf("---------;\n");
 
 	ExpStack* tree = NULL;
 
@@ -1261,6 +1279,14 @@ parse_expression(ParseState* P) {
 			}
 			operand->parent = at;
 			at->uval->operand = operand;
+			expstack_push(&tree, at);
+		} else if (at->type == EXP_CAST) {
+			ExpNode* operand = expstack_pop(&tree);
+			if (!operand) {
+				parse_die(P, malformed);
+			}
+			operand->parent = at;
+			at->cxval->operand = operand;
 			expstack_push(&tree, at);
 		} else if (at->type == EXP_BINARY) {
 			/* pop the leaves off of the stack */
@@ -1641,6 +1667,7 @@ parse_statement(ParseState* P) {
 	/* starts on first token of expression... parse it */
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
+	print_expression(node->stateval->exp, 0);
 	typecheck_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 

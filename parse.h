@@ -63,6 +63,7 @@ typedef struct ParseState ParseState;
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
 typedef struct UnaryOp UnaryOp;
+typedef struct Cast Cast;
 
 typedef enum ExpNodeType ExpNodeType;
 typedef enum TreeNodeType TreeNodeType;
@@ -102,6 +103,11 @@ struct UnaryOp {
 	ExpNode* operand;
 };
 
+struct Cast {
+	Datatype* d;
+	ExpNode* operand;
+};
+
 struct FuncCall {
 	ExpNode* arguments;
 	int nargs;
@@ -125,6 +131,7 @@ struct ExpNode {
 		spy_float fval;
 		char* sval;
 		FuncCall* cval;
+		Cast* cxval;
 	};
 };
 

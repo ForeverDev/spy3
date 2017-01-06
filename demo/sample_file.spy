@@ -1,36 +1,14 @@
-struct Name {
-	first: ^byte;
-	last: ^byte;
-};
-
-struct Person {
-	name: Name;
-	age: int;
-};
+struct Wrapper {
+	fptr: () -> void;
+};	
 
 print: cfunc (format: ^byte, ...) -> void;
 
-print_person: (person: Person) -> void {
-	print(
-		"%s %s is %d years old\n",
-		person.name.first,
-		person.name.last,
-		person.age
-	); 
-}
-
-grow_person: (person: Person, years: int) -> void {
-	person.age += years;
-}
-
 main: () -> void {
 
-	tom: Person;
-	tom.name.first = "Tom";
-	tom.name.last = "Cook";
-	tom.age = 18;
+	x: int;
 
-	print_person(tom);
-
+	x = 13 * (#int 10.3 + 11);
 
 }
+
