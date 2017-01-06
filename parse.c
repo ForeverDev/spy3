@@ -146,6 +146,19 @@ is_keyword(const char* word) {
 	return 0;
 }
 
+static int
+is_typename(const char* word) {
+	static const char* types[] = {
+		"int", "byte", "float", NULL
+	};
+	for (const char** i = types; *i; i++) {
+		if (!strcmp(*i, word)) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static void
 assert_operator(ParseState* P, char type) {
 	if (!P->tokens || P->tokens->token->type != TOK_OPERATOR || P->tokens->token->oval != type) {
@@ -904,9 +917,10 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			return exp->eval = var->datatype;
 		}
 		case EXP_CAST: {
-			const Datatype* op = typecheck_expression(P, exp->cxval->operand);
-
-			return exp->eval = exp->cxval->d;
+			const Datatype* from = typecheck_expression(P, exp->cxval->operand);
+			const Datatype* to = exp->cxval->d;
+			
+			return exp->eval = to;
 		}
 		case EXP_CALL: {
 			FunctionDescriptor* desc = NULL;
@@ -1128,7 +1142,7 @@ parse_expression(ParseState* P) {
 		if (prev && tok->type == TOK_OPERATOR && tok->oval == '(' && 
 			(
 				(prev->type == TOK_OPERATOR && prev->oval == ')') ||
-				(prev->type == TOK_IDENTIFIER)
+				(prev->type == TOK_IDENTIFIER && !is_keyword(prev->sval) && !is_typename(prev->sval))
 			)
 		) {
 			P->tokens = P->tokens->next; /* advance to first argument token */
@@ -1248,12 +1262,6 @@ parse_expression(ParseState* P) {
 	 * convert from postix to a tree
 	 */
 	
-	printf("---------;\n");
-	for (ExpStack* i = postfix; i; i = i->next) {
-		print_expression(i->node, 0);
-	}
-	printf("---------;\n");
-
 	ExpStack* tree = NULL;
 
 	static const char* malformed = "malfored expression";
@@ -1667,7 +1675,6 @@ parse_statement(ParseState* P) {
 	/* starts on first token of expression... parse it */
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
-	print_expression(node->stateval->exp, 0);
 	typecheck_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 

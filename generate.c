@@ -352,6 +352,21 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			}
 			break;
 		}
+		case EXP_CAST: {
+			const Datatype* to = exp->cxval->d;	
+			const Datatype* from = exp->cxval->operand->eval;
+			int from_f = from->type == DATA_FLOAT && from->ptr_dim == 0;
+			int from_i = from->type != DATA_FLOAT;
+			int to_f = to->type == DATA_FLOAT && to->ptr_dim == 0;
+			int to_i = to->type != DATA_FLOAT;
+			generate_expression(C, exp->cxval->operand);
+			if (from_f && to_i) {
+				writer(C, "ftoi\n");
+			} else if (from_i && to_f) {
+				writer(C, "itof\n");
+			}
+			break;
+		}
 		case EXP_CALL: {
 			FuncCall* call = exp->cval;
 			generate_expression(C, call->arguments);

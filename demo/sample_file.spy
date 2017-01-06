@@ -1,14 +1,81 @@
-struct Wrapper {
-	fptr: () -> void;
-};	
-
 print: cfunc (format: ^byte, ...) -> void;
+
+map: (n: float, a: float, b: float, c: float, d: float) -> float {
+	return (n - a) / (b - a) * (d - c) + c;
+}
+
+generate_mandelbrot: (px: int, py: int,
+					  minx: float, maxx: float,
+					  miny: float, maxy: float,
+					  maxiter: int) -> void {
+	
+	i: int;
+	j: int;
+
+	for (j = 0; j < px; j += 1) {
+		for (i = 0; i < py; i += 1) {
+			cx: float;
+			cy: float;
+			zx: float;
+			zy: float;
+			tmp: float;
+			iter: int;
+
+			cx = map(#float i, 0.0, #float (px - 1), minx, maxx);
+			cy = map(#float j, 0.0, #float (py - 1), miny, maxy);	
+			zx = 0.0;
+			zy = 0.0;
+			iter = 0;
+			
+			while (iter < maxiter) {
+				if (zx*zx + zy*zy > 4.0)
+					break;
+				tmp = zx;
+				zx = zx*zx - zy*zy + cx;
+				zy = 2.0*tmp*zy + cy;
+				iter += 1;
+			}
+
+			if (iter == maxiter)
+				print("  ");
+			if (iter != maxiter) 
+				print("X ");
+
+		}
+		print("\n");
+	}
+
+}
 
 main: () -> void {
 
-	x: int;
+	max_iter: int;
+	screen_x: int;
+	screen_y: int;
+	min_x: float;
+	max_x: float;
+	min_y: float;
+	max_y: float; 
 
-	x = 13 * (#int 10.3 + 11);
+	max_iter = 100;
+	screen_x = 40;
+	screen_y = 40;
+	min_x = 0.0 - 1.5;
+	max_x = 0.9;
+	min_y = 0.0 - 1.2;
+	max_y = 1.2;
+
+	print("\n\nmandelbrot information: \n");
+	print("screen size:          [%d, %d]\n", screen_x, screen_y);
+	print("top left coordinate:  [%f, %f]\n", min_x, min_y);
+	print("top right coordinate: [%f, %f]\n", max_x, max_y);
+	
+	generate_mandelbrot(
+		screen_x, screen_y,
+		min_x, max_x,
+		min_y, max_y,
+		max_iter
+	);	
 
 }
 
