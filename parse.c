@@ -78,7 +78,7 @@ static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
 static VarDeclaration* find_field(const TreeStruct*, const char*);
 static TreeNode* empty_node();
-static void condense_expression(ParseState*, ExpNode*);
+static void fold_expression(ParseState*, ExpNode*);
 
 static const OpEntry prec[127] = {
 	[',']				= {1, ASSOC_LEFT, OP_BINARY},
@@ -1083,10 +1083,11 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					int li = left->type == DATA_INT && left->ptr_dim == 0;
 					int rf = right->type == DATA_FLOAT && right->ptr_dim == 0;
 					int ri = right->type == DATA_INT && right->ptr_dim == 0;
-					/*
 					if ((lf && ri) || (rf && li)) {
-							
-					} else */ if (!types_match(left, right)) {
+						/* if one is a float and one is an int, an implicit cast will be done
+						 * and the expression will evaluate to a float */
+						 return exp->eval = P->type_float;
+					} else if (!types_match(left, right)) {
 						parse_die(P, 
 							"attempt to use operator (%s) on mismatched types '%s' and '%s'", 
 							tokcode_tostring(exp->bval->optype),
@@ -1348,21 +1349,21 @@ parse_expression(ParseState* P) {
 }
 
 static void
-condense_expression(ParseState* P, ExpNode* exp) {
+fold_expression(ParseState* P, ExpNode* exp) {
 	if (!exp) return;
 	switch (exp->type) {
 		case EXP_BINARY: {	
 			ExpNode* lhs = exp->bval->left;
 			ExpNode* rhs = exp->bval->right;
 			int li, lf, ri, rf;
-			condense_expression(P, lhs);
-			condense_expression(P, rhs);
+			fold_expression(P, lhs);
+			fold_expression(P, rhs);
 			/* re-evaluate */
 			li = lhs->type == EXP_INTEGER;
 			lf = lhs->type == EXP_FLOAT;
 			ri = rhs->type == EXP_INTEGER;
 			rf = rhs->type == EXP_FLOAT;
-			/* only condense if both are literals that are of the same type */
+			/* only fold if both are literals that are of the same type */
 			if (li && ri) {
 				spy_int result;
 				spy_int l = lhs->ival;
@@ -1413,14 +1414,14 @@ condense_expression(ParseState* P, ExpNode* exp) {
 			break;	
 		}
 		case EXP_UNARY:
-			condense_expression(P, exp->uval->operand);
+			fold_expression(P, exp->uval->operand);
 			break;
 		case EXP_CAST:
-			condense_expression(P, exp->cxval->operand);
+			fold_expression(P, exp->cxval->operand);
 			break;
 		case EXP_CALL:
-			condense_expression(P, exp->cval->fptr);
-			condense_expression(P, exp->cval->arguments);
+			fold_expression(P, exp->cval->fptr);
+			fold_expression(P, exp->cval->arguments);
 			break;
 		case EXP_INTEGER:
 		case EXP_FLOAT:
@@ -1471,7 +1472,7 @@ parse_return(ParseState* P) {
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
-	condense_expression(P, node->stateval->exp);
+	fold_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 
 	append_node(P, node);
@@ -1782,7 +1783,7 @@ parse_statement(ParseState* P) {
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
-	condense_expression(P, node->stateval->exp);
+	fold_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 
 	append_node(P, node);
@@ -1802,7 +1803,7 @@ parse_if(ParseState* P) {
 	mark_operator(P, '(', ')');
 	node->ifval->condition = parse_expression(P);
 	typecheck_expression(P, node->ifval->condition);
-	condense_expression(P, node->ifval->condition);
+	fold_expression(P, node->ifval->condition);
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
@@ -1827,7 +1828,7 @@ parse_while(ParseState* P) {
 	mark_operator(P, '(', ')');
 	node->whileval->condition = parse_expression(P);
 	typecheck_expression(P, node->whileval->condition);
-	condense_expression(P, node->whileval->condition);
+	fold_expression(P, node->whileval->condition);
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
@@ -1847,17 +1848,17 @@ parse_for(ParseState* P) {
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->init = parse_expression(P);
 	typecheck_expression(P, node->forval->init);
-	condense_expression(P, node->forval->init);
+	fold_expression(P, node->forval->init);
 	P->tokens = P->tokens->next; /* skip ; */
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->condition = parse_expression(P);
 	typecheck_expression(P, node->forval->condition);
-	condense_expression(P, node->forval->condition);
+	fold_expression(P, node->forval->condition);
 	P->tokens = P->tokens->next; /* skip ; */
 	mark_operator(P, '(', ')');
 	node->forval->statement = parse_expression(P);
 	typecheck_expression(P, node->forval->statement);
-	condense_expression(P, node->forval->statement);
+	fold_expression(P, node->forval->statement);
 	P->tokens = P->tokens->next; /* skip ) */
 
 	append_node(P, node);

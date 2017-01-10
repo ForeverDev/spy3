@@ -2,6 +2,11 @@ print: cfunc (format: ^byte, ...) -> void;
 
 main: () -> void {
 
-	10.5 - 0.5;
+	x: int;
+	y: float;
+
+	y = 10.5;
+
+	x = 10 * y;
 
 }
