@@ -312,7 +312,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	}
 	switch (exp->type) {
 		case EXP_INTEGER:
-			writer(C, "iconst 0x%X\n", exp->ival);
+			writer(C, "iconst %lld\n", exp->ival);
 			break;
 		case EXP_FLOAT:
 			writer(C, "fconst %f\n", exp->fval);
@@ -345,10 +345,10 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
 			} else if (dont_der && d->type != DATA_STRUCT) {
 				/* structs are pointers, use locall */
-				writer(C, "lea 0x%x\n", var->offset);
+				writer(C, "lea %d\n", var->offset);
 			} else {
 				char prefix = get_prefix(d);
-				writer(C, "%clocall 0x%x\n", prefix, var->offset);
+				writer(C, "%clocall %d\n", prefix, var->offset);
 			}
 			break;
 		}
@@ -376,16 +376,16 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			}
 			if (call->computed) {
 				if (call->fptr->eval->mods & MOD_CFUNC) {
-					writer(C, "ccfcall 0x%x\n", call->nargs);
+					writer(C, "ccfcall %d\n", call->nargs);
 				} else {
-					writer(C, "ccall 0x%x\n", call->nargs);
+					writer(C, "ccall %d\n", call->nargs);
 				}
 			} else {
 				VarDeclaration* f = get_local(C, call->fptr->sval);
 				if (f->datatype->mods & MOD_CFUNC) {
-					writer(C, "cfcall " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
+					writer(C, "cfcall " FORMAT_FUNC ", %d\n", call->fptr->sval, call->nargs);
 				} else {
-					writer(C, "call " FORMAT_FUNC ", 0x%x\n", call->fptr->sval, call->nargs);
+					writer(C, "call " FORMAT_FUNC ", %d\n", call->fptr->sval, call->nargs);
 				}
 			}
 			break;
@@ -409,12 +409,12 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					VarDeclaration* obj = get_local(C, lhs->sval);
 					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
 					/* call to generate made lea, now add offset */
-					writer(C, "iinc 0x%x\n", field->offset);	
+					writer(C, "iinc %d\n", field->offset);	
 				} else {
 					/* if it's a chain (not at the bottom), grab the field from the eval
 					 * instead of finding the struct from its identifier */
 					VarDeclaration* field = get_field(lhs->eval->sdesc, rhs->sval);
-					writer(C, "iinc 0x%x\n", field->offset);	
+					writer(C, "iinc %d\n", field->offset);	
 				}
 				if (!is_assign) {
 					writer(C, "%cder\n", get_prefix(exp->eval));	
@@ -627,7 +627,7 @@ print_stack_map(CompileState* C, TreeNode* node) {
 		for (; list; list = list->next) {
 			VarDeclaration* var = list->decl;
 			char* dt = tostring_datatype(var->datatype);
-			writeb(C, ";\t [0x%04X] %s: %s\n", var->offset, var->name, dt);
+			writeb(C, ";\t [%04d] %s: %s\n", var->offset, var->name, dt);
 			free(dt);
 		}
 	}
@@ -660,9 +660,9 @@ generate_function(CompileState* C) {
 	writeb(C, FORMAT_DEF_FUNC, func->name);	
 	int index = 0;
 	for (VarDeclarationList* i = desc->arguments; i; i = i->next) {
-		writeb(C, "%carg 0x%x\n", get_prefix(i->decl->datatype), index++);
+		writeb(C, "%carg %d\n", get_prefix(i->decl->datatype), index++);
 	}
-	writeb(C, "res 0x%x\n", desc->stack_space);
+	writeb(C, "res %d\n", desc->stack_space);
 	pushb(C, FORMAT_DEF_LABEL, C->return_label);
 	const Datatype* ret = desc->return_type;
 	if (ret->type == DATA_VOID) {
@@ -685,13 +685,13 @@ initialize_local(CompileState* C, VarDeclaration* var) {
 	if (d->type == DATA_STRUCT && !is_ptr) {
 		/* if it's a struct, initialize it as a pointer to stack space */
 		/* note a struct's stack space exists 8 bytes after its pointer */
-		writeb(C, "lea 0x%x\n", var->offset + 8);
+		writeb(C, "lea %d\n", var->offset + 8);
 	} else {
 		/* otherwise just initialize it as 0... no need to initialize a float
 		 * differently because a 0 int is a 0 float */
-		writeb(C, "iconst 0x0\n");
+		writeb(C, "iconst 0\n");
 	}
-	writeb(C, "ilocals 0x%x\n", var->offset);
+	writeb(C, "ilocals %d\n", var->offset);
 	writeb(C, "; -----------\n");
 }
 
@@ -777,7 +777,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	}
 	
 	writeb(&C, "\n__ENTRY__:\n");	
-	writeb(&C, "call " FORMAT_FUNC ", 0x0\n", "main");
+	writeb(&C, "call " FORMAT_FUNC ", 0\n", "main");
 	writeb(&C, "exit\n");
 
 	fclose(C.handle);

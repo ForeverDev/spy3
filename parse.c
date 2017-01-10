@@ -1064,8 +1064,10 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					break;
 				}
 				default: {
-					const Datatype* left = typecheck_expression(P, exp->bval->left);
-					const Datatype* right = typecheck_expression(P, exp->bval->right);
+					ExpNode* lhs = exp->bval->left;
+					ExpNode* rhs = exp->bval->right;
+					const Datatype* left = typecheck_expression(P, lhs);
+					const Datatype* right = typecheck_expression(P, rhs);
 					if (exp->bval->optype == ',') {
 						return exp->eval = NULL;
 					}
@@ -1073,6 +1075,9 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					int is_assign = IS_ASSIGN(exp->bval);	
 					if (is_assign && left_const) {
 						parse_die(P, "attempt to assign to a const memory address");
+					}
+					if (is_assign && IS_LITERAL(lhs)) {
+						parse_die(P, "the left side of an assignment operator must not be a literal");
 					}
 					int lf = left->type == DATA_FLOAT && left->ptr_dim == 0;
 					int li = left->type == DATA_INT && left->ptr_dim == 0;
@@ -1375,6 +1380,24 @@ condense_expression(ParseState* P, ExpNode* exp) {
 					case '/':
 						result = l / r;
 						break;
+					case SPEC_EQ:
+						result = l == r;
+						break;
+					case SPEC_NEQ:
+						result = l != r;
+						break;
+					case '>':
+						result = l > r;
+						break;
+					case '<':
+						result = l < r;
+						break;
+					case SPEC_GE:
+						result = l >= r;
+						break;
+					case SPEC_LE:
+						result = l <= r;
+						break;
 				}
 				/* cleanup children that are not needed anymore */
 				free(exp->bval);
@@ -1389,6 +1412,21 @@ condense_expression(ParseState* P, ExpNode* exp) {
 			}
 			break;	
 		}
+		case EXP_UNARY:
+			condense_expression(P, exp->uval->operand);
+			break;
+		case EXP_CAST:
+			condense_expression(P, exp->cxval->operand);
+			break;
+		case EXP_CALL:
+			condense_expression(P, exp->cval->fptr);
+			condense_expression(P, exp->cval->arguments);
+			break;
+		case EXP_INTEGER:
+		case EXP_FLOAT:
+		case EXP_STRING:
+		case EXP_IDENTIFIER:
+			return;
 	}
 }
 
@@ -1433,6 +1471,7 @@ parse_return(ParseState* P) {
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
+	condense_expression(P, node->stateval->exp);
 	P->tokens = P->tokens->next; /* skip ; */
 
 	append_node(P, node);
@@ -1763,6 +1802,7 @@ parse_if(ParseState* P) {
 	mark_operator(P, '(', ')');
 	node->ifval->condition = parse_expression(P);
 	typecheck_expression(P, node->ifval->condition);
+	condense_expression(P, node->ifval->condition);
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
@@ -1787,6 +1827,7 @@ parse_while(ParseState* P) {
 	mark_operator(P, '(', ')');
 	node->whileval->condition = parse_expression(P);
 	typecheck_expression(P, node->whileval->condition);
+	condense_expression(P, node->whileval->condition);
 	P->tokens = P->tokens->next; /* skip ')' */
 
 	append_node(P, node);
@@ -1806,14 +1847,17 @@ parse_for(ParseState* P) {
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->init = parse_expression(P);
 	typecheck_expression(P, node->forval->init);
+	condense_expression(P, node->forval->init);
 	P->tokens = P->tokens->next; /* skip ; */
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->condition = parse_expression(P);
 	typecheck_expression(P, node->forval->condition);
+	condense_expression(P, node->forval->condition);
 	P->tokens = P->tokens->next; /* skip ; */
 	mark_operator(P, '(', ')');
 	node->forval->statement = parse_expression(P);
 	typecheck_expression(P, node->forval->statement);
+	condense_expression(P, node->forval->statement);
 	P->tokens = P->tokens->next; /* skip ) */
 
 	append_node(P, node);

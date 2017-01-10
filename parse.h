@@ -32,9 +32,9 @@
 						) \
 					)
 
-#define IS_LITERAL(d) ((d)->type == DATA_INTEGER || \
-					   (d)->type == DATA_FLOAT || \
-					   (d)->type == DATA_STRING)
+#define IS_LITERAL(d) ((d)->type == EXP_INTEGER || \
+					   (d)->type == EXP_FLOAT || \
+					   (d)->type == EXP_STRING)
 
 
 
