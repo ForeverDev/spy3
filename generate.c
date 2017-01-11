@@ -470,20 +470,8 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				}
 				writer(C, "%csave\n", lp);
 			} else { 
-				int float_l = lhs->eval->type == DATA_FLOAT && lhs->eval->ptr_dim == 0;
-				int float_r = rhs->eval->type == DATA_FLOAT && rhs->eval->ptr_dim == 0;
-				int int_l = lhs->eval->type == DATA_INT && lhs->eval->ptr_dim == 0;
-				int int_r = rhs->eval->type == DATA_INT && rhs->eval->ptr_dim == 0;
-				int impl_l = int_l && float_r;
-				int impl_r = int_r && float_l;
 				generate_expression(C, lhs);
-				if (impl_l) {
-					writer(C, "itof\n");
-				}
 				generate_expression(C, rhs);
-				if (impl_r) {
-					writer(C, "itof\n");
-				}
 				if (exp->bval->optype == ',') {
 					break;
 				}
