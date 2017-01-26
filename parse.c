@@ -1985,6 +1985,9 @@ generate_syntax_tree(TokenList* tokens) {
 					P->current_function->funcval->desc->fdesc->stack_space += inc;
 				}
 			}
+
+			/* TODO now that the declaration has been parsed, if on token '=', assign
+			 * to the newly declared variable.  Throw an error if the token is not '=' or ';' */
 		} else if (on_op(P, '{')) {
 			parse_block(P);
 		} else if (on_op(P, '}')) {
