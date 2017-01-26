@@ -2,6 +2,7 @@ print: cfunc (format: ^byte, ...) -> void;
 
 /* basic increment function, takes pointer and amount to increment */
 inc: (n: ^int, amount: int) -> void {
+	print("incremented number from %d to %d\n", $n, $n + amount);
 	$n = $n + amount;
 }
 
