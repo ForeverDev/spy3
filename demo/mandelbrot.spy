@@ -68,10 +68,13 @@ main: () -> void {
 	max_iter = 1000;
 	screen_x = 40;
 	screen_y = 40;
-	min_x = 1.0 - 1.5;
-	max_x = 0.9;
-	min_y = 0.0 - 1.2;
-	max_y = 1.2;
+	min_x = 0.0;
+	max_x = 1.5;
+	min_y = 0.0;
+	max_y = 1.5;
+
+	min_x -= 1.5;
+	min_y -= 1.5;
 
 	print("\n\nmandelbrot information: \n");
 	print("screen size:          [%d, %d]\n", screen_x, screen_y);

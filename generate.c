@@ -394,8 +394,11 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			ExpNode* operand = exp->uval->operand;
 			generate_expression(C, operand);
 			if (exp->uval->optype == '$') {
-				int prefix = get_prefix(operand->eval);
-				writer(C, "%cder\n", prefix);
+				/* don't dereference if the parent is an assignment */
+				if (!(parent && parent->type == EXP_BINARY && IS_ASSIGN(parent->bval))) {
+					int prefix = get_prefix(operand->eval);
+					writer(C, "%cder\n", prefix);
+				}
 			}
 			break;
 		}
@@ -405,17 +408,16 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			if (exp->bval->optype == '.') {
 				int is_bottom = lhs->type == EXP_IDENTIFIER;
 				generate_expression(C, exp->bval->left);				
+				VarDeclaration* field;
 				if (is_bottom) {
 					VarDeclaration* obj = get_local(C, lhs->sval);
-					VarDeclaration* field = get_field(obj->datatype->sdesc, rhs->sval);
-					/* call to generate made lea, now add offset */
-					writer(C, "iinc %d\n", field->offset);	
+					field = get_field(obj->datatype->sdesc, rhs->sval);
 				} else {
 					/* if it's a chain (not at the bottom), grab the field from the eval
 					 * instead of finding the struct from its identifier */
-					VarDeclaration* field = get_field(lhs->eval->sdesc, rhs->sval);
-					writer(C, "iinc %d\n", field->offset);	
+					field = get_field(lhs->eval->sdesc, rhs->sval);
 				}
+				writer(C, "iinc %d\n", field->offset);	
 				if (!is_assign) {
 					writer(C, "%cder\n", get_prefix(exp->eval));	
 				}
@@ -499,7 +501,6 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						writer(C, "mod");
 						break;
 					
-					/* TODO implement top-level jump for comparison operators */
 					case '>':
 					case '<':
 					case SPEC_GE:

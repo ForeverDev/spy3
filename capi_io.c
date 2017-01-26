@@ -29,6 +29,38 @@ io_print(SpyState* spy) {
 					case 's':
 						length += printf("%s", spy_gets(spy, spy_pop_int(spy)));
 						break;
+					case 'b': {
+						uint64_t bin;
+						int bits;
+						switch (*(++format)) {
+							case 'i': {
+								bin = spy_pop_int(spy); 
+								bits = 64;
+								break;
+							}
+							case 'f': {
+								spy_float pop = spy_pop_float(spy);
+								bin = *(uint64_t *)&pop; 
+								bits = 64;
+								break;
+							}
+							case 'b': {
+								bin = 0x0 | spy_pop_byte(spy); 
+								bits = 8;
+								break;
+							}
+							/* an attempt to catch undefined behavior from a faulty format... */
+							default:
+								bits = 8;
+								bin = 0;
+								break;
+						}
+						for (int i = 0; i < bits; i++) {
+							fputc('0' + ((bin >> (bits - i - 1)) & 0x1), stdout);
+						}
+						length += 64;
+						break;
+					}
 				}
 				break;
 			default:
