@@ -165,6 +165,12 @@ get_prefix(const Datatype* data) {
 	return (data->type == DATA_FLOAT && data->ptr_dim == 0) ? 'f' : 'i';
 }
 
+static char
+get_prefix_b(const Datatype* data) {
+	return (data->type == DATA_FLOAT && data->ptr_dim == 0) ? 'f' :
+	       (data->type == DATA_BYTE && data->ptr_dim == 0) ? 'b' : 'i';
+}
+
 static TreeStruct*
 get_struct(CompileState* C, const char* identifier) {
 	for (TreeStructList* i = C->defined_structs; i; i = i->next) {
@@ -395,8 +401,8 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			generate_expression(C, operand);
 			if (exp->uval->optype == '$') {
 				/* don't dereference if the parent is an assignment */
-				if (!(parent && parent->type == EXP_BINARY && IS_ASSIGN(parent->bval))) {
-					int prefix = get_prefix(operand->eval);
+				if (!(parent && parent->type == EXP_BINARY && IS_ASSIGN(parent->bval) && exp->side == LEAF_LEFT)) {
+					int prefix = get_prefix_b(exp->eval);
 					writer(C, "%cder\n", prefix);
 				}
 			}
@@ -419,7 +425,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				}
 				writer(C, "iinc %d\n", field->offset);	
 				if (!is_assign) {
-					writer(C, "%cder\n", get_prefix(exp->eval));	
+					writer(C, "%cder\n", get_prefix_b(exp->eval));	
 				}
 			} else if (exp->bval->optype == '=') {
 				generate_expression(C, lhs);
@@ -429,7 +435,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				}
 				writer(C, "%csave\n", get_prefix(lhs->eval)); 
 			} else if (IS_ASSIGN(exp->bval)) {
-				char lp = get_prefix(lhs->eval);
+				char lp = get_prefix_b(lhs->eval);
 				generate_expression(C, lhs);
 				writer(C, "dup\n");
 				writer(C, "%cder\n", lp);
@@ -753,9 +759,16 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 			case NODE_FUNC_IMPL:
 				generate_function(&C);
 				break;
-			case NODE_STATEMENT:
-				generate_expression(&C, C.focus->stateval->exp);
+			case NODE_STATEMENT: {
+				ExpNode* exp = C.focus->stateval->exp;
+				generate_expression(&C, exp);
+				/*
+				if (exp->eval->type != DATA_VOID && !(exp->type == EXP_BINARY && IS_ASSIGN(exp->bval))) {
+					writeb(&C, "pop\n");
+				}
+				*/
 				break;
+			}
 			case NODE_BREAK:
 				generate_break(&C);
 				break;

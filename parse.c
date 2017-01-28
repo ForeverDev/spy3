@@ -151,8 +151,8 @@ is_keyword(const char* word) {
 
 static int
 is_typename(const char* word) {
-	static const char* types[] = {
-		"int", "byte", "float", NULL
+	static const char* types[] = { 
+		"int", "byte", "float", "file", NULL
 	};
 	for (const char** i = types; *i; i++) {
 		if (!strcmp(*i, word)) {
@@ -564,6 +564,9 @@ print_datatype(Datatype* data, int indent) {
 		case DATA_INT:
 			printf("int\n");
 			break;
+		case DATA_FILE:
+			printf("file\n");
+			break;
 		case DATA_FLOAT:
 			printf("float\n");
 			break;	
@@ -635,6 +638,9 @@ tostring_datatype(const Datatype* data) {
 	switch (data->type) {
 		case DATA_INT:
 			strcat(buf, "int");
+			break;
+		case DATA_FILE:
+			strcat(buf, "file");
 			break;
 		case DATA_FLOAT:
 			strcat(buf, "float");
@@ -736,6 +742,7 @@ matches_datatype(ParseState* P) {
 	if (   on_ident(P, "int") 
 		|| on_ident(P, "float") 
 		|| on_ident(P, "byte") 
+		|| on_ident(P, "file")
 		|| on_ident(P, "struct")
 		|| on_ident(P, "const")
 		|| on_ident(P, "static")
@@ -1068,25 +1075,49 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					ExpNode* rhs = exp->bval->right;
 					const Datatype* left = typecheck_expression(P, lhs);
 					const Datatype* right = typecheck_expression(P, rhs);
+					const Datatype* ret_type = left;
 					if (exp->bval->optype == ',') {
 						return exp->eval = NULL;
 					}
 					int left_const = left->mods & MOD_CONST;
 					int is_assign = IS_ASSIGN(exp->bval);	
-					if (is_assign && left_const) {
-						parse_die(P, "attempt to assign to a const memory address");
+					int p_l = left->ptr_dim > 0;
+					int p_r = right->ptr_dim > 0;
+					int lf = left->type == DATA_FLOAT && !p_l;
+					int li = left->type == DATA_INT && !p_l;
+					int lb = left->type == DATA_BYTE && !p_l;
+					int rf = right->type == DATA_FLOAT && !p_r;
+					int ri = right->type == DATA_INT && !p_r;
+					int rb = right->type == DATA_BYTE && !p_r;
+					if (exp->bval->optype == '=') {
+						if (lb && ri) {
+							//parse_die(P, "possible loss of data assigning integer to byte... use an explicit cast if you want do to that");
+						}	
 					}
-					if (is_assign && IS_LITERAL(lhs)) {
-						parse_die(P, "the left side of an assignment operator must not be a literal");
+					if (is_assign) {
+						if (left_const) {
+							parse_die(P, "attempt to assign to a const memory address");
+						}
+						if (IS_LITERAL(lhs)) {
+							parse_die(P, "the left side of an assignment operator must not be a literal");
+						}
 					}
-					int lf = left->type == DATA_FLOAT && left->ptr_dim == 0;
-					int li = left->type == DATA_INT && left->ptr_dim == 0;
-					int rf = right->type == DATA_FLOAT && right->ptr_dim == 0;
-					int ri = right->type == DATA_INT && right->ptr_dim == 0;
 					if ((lf && ri) || (rf && li)) {
 						/* if one is a float and one is an int, an implicit cast will be done
 						 * and the expression will evaluate to a float */
 						 return exp->eval = P->type_float;
+					} else if (p_l && ri) {
+						/* allow pointer arithmetic */
+						return exp->eval = left;
+					} else if (p_r && li) {
+						/* allow pointer arithmetic */
+						return exp->eval = right;
+					} else if (rb && li) {
+						/* promote byte -> int */
+						return exp->eval = left;
+					} else if (lb && ri) {
+						/* promote byte -> int */
+						return exp->eval = right;
 					} else if (!types_match(left, right)) {
 						parse_die(P, 
 							"attempt to use operator (%s) on mismatched types '%s' and '%s'", 
@@ -1095,6 +1126,7 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 							tostring_datatype(right)
 						);
 					}
+
 					return exp->eval = left; /* they're both identical, doesn't matter which is returned */
 				}
 			}
@@ -1639,6 +1671,9 @@ parse_datatype(ParseState* P) {
 		} else if (on_ident(P, "void")) {
 			data->type = DATA_VOID;
 			data->size = 0;
+		} else if (on_ident(P, "file")) {
+			data->type = DATA_FILE;
+			data->size = 8;
 		} else {
 			if (!is_ident(P)) {
 				parse_die(P, "expected typename");
@@ -1888,6 +1923,12 @@ generate_syntax_tree(TokenList* tokens) {
 	P->type_int->ptr_dim = 0;
 	P->type_int->array_dim = 0;
 	P->type_int->size = 8;
+
+	P->type_file = malloc(sizeof(Datatype));
+	P->type_file->type = DATA_FILE;
+	P->type_file->ptr_dim = 0;
+	P->type_file->array_dim = 0;
+	P->type_file->size = 8;
 	
 	P->type_float = malloc(sizeof(Datatype));
 	P->type_float->type = DATA_FLOAT;
@@ -1932,6 +1973,13 @@ generate_syntax_tree(TokenList* tokens) {
 				/* an extra 8 bytes are needed for a struct because it is implemented
 				 * on the stack with a pointer */
 				inc += 8;
+			}
+			if (var->datatype->array_dim > 0) {
+				int size = 1;
+				for (int i = 0; i < var->datatype->array_dim; i++) {
+					size *= var->datatype->array_size[i];
+				}
+				inc = size * inc;
 			}
 			if (var->datatype->type == DATA_FPTR) {
 				if (var->datatype->mods & MOD_CFUNC && P->current_block != P->root_node) {

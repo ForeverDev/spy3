@@ -77,7 +77,8 @@ enum ExpNodeType {
 	EXP_FLOAT = 5,   /* literal */
 	EXP_STRING = 6,  /* literal */
 	EXP_IDENTIFIER = 7,
-	EXP_CALL = 8
+	EXP_CALL = 8,
+	EXP_INDEX = 9
 };
 
 enum TreeNodeType {
@@ -158,7 +159,8 @@ struct Datatype {
 		DATA_BYTE = 3,
 		DATA_FPTR = 4,
 		DATA_STRUCT = 5,
-		DATA_VOID = 6
+		DATA_VOID = 6,
+		DATA_FILE = 7
 	} type;
 
 	/* 0 if not array */
@@ -287,6 +289,7 @@ struct ParseState {
 	Datatype* type_float;
 	Datatype* type_byte;
 	Datatype* type_string;
+	Datatype* type_file;
 	TreeStructList* defined_structs;
 	unsigned int current_offset;
 	int next_is_else;

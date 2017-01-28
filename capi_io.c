@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 #include "capi_io.h"
 #include "spylib.h"
 
@@ -16,8 +18,15 @@ io_print(SpyState* spy) {
 					case 'd':
 						length += printf("%lld", spy_pop_int(spy));
 						break;
-					case 'x':
-						length += printf("%llx", spy_pop_int(spy));
+					case 'x': 
+						switch (*(++format)) {
+							case 'i':
+								length += printf("%llx", spy_pop_int(spy));
+								break;
+							case 'b':
+								length += printf("%x", spy_pop_byte(spy));
+								break;			
+						}
 						break;
 					case 'f':
 						length += printf("%f", spy_pop_float(spy));
@@ -75,6 +84,22 @@ io_print(SpyState* spy) {
 }
 
 static spy_int
+io_fputc(SpyState* spy) {
+	FILE* fptr = (FILE *)spy_pop_int(spy);
+	spy_byte b = spy_pop_byte(spy);
+	fputc(b, fptr);
+	return 0;
+}
+
+static spy_int
+io_fputs(SpyState* spy) {
+	FILE* fptr = (FILE *)spy_pop_int(spy);
+	spy_string s = spy_gets(spy, spy_pop_int(spy));
+	fputs(s, fptr);
+	return 0;
+}
+
+static spy_int
 io_outc(SpyState* spy) {
 	spy_byte c = spy_pop_byte(spy);
 	fputc(c, stdout);
@@ -83,11 +108,21 @@ io_outc(SpyState* spy) {
 
 static spy_int
 io_fopen(SpyState* spy) {
+	char path[1024] = {0};
+	getcwd(path, 1024);
 	spy_string fname = spy_gets(spy, spy_pop_int(spy));
 	spy_string mode = spy_gets(spy, spy_pop_int(spy));
-	FILE* fptr = fopen(fname, mode);
+	strcat(path, "/");
+	strcat(path, fname);
+	FILE* fptr = fopen(path, mode);
 	spy_push_int(spy, (spy_int)fptr);
 	return 1;
+}
+
+static spy_int
+io_fclose(SpyState* spy) {
+	fclose((FILE *)spy_pop_int(spy));
+	return 0;
 }
 
 static spy_int
@@ -138,9 +173,12 @@ SpyCFunc capi_io[] = {
 	{"print", io_print},
 	{"outc", io_outc},
 	{"fopen", io_fopen},
+	{"fclose", io_fclose},
 	{"fseek", io_fseek},
 	{"ftell", io_ftell},
 	{"fgetc", io_fgetc},
+	{"fputc", io_fputc},
+	{"fputs", io_fputs},
 	{"fread", io_fread},
 	{"scan", io_scan},
 	{NULL, NULL}

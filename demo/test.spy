@@ -1,21 +1,25 @@
 print: cfunc (format: ^byte, ...) -> void;
-
-/* basic increment function, takes pointer and amount to increment */
-inc: (n: ^int, amount: int) -> void {
-	print("incremented number from %d to %d\n", $n, $n + amount);
-	$n = $n + amount;
-}
+alloc: cfunc (bytes: int) -> ^byte;
+quit:  cfunc (key: int) -> void;
 
 main: () -> void {
-
-	thing: int;
-	index: int;
 	
-	thing = 0;
-	
-	for (index = 0; index < 10; index += 1)	
-		inc(@thing, 10);
+	arr: ^^int;
+	dimx: int;
+	dimy: int;
+	i: int;
+	j: int;
 
-	print("%d\n", thing);
+	dimx = 10;
+	dimy = 20;
+
+	arr = #^^int alloc(dimx * 8);
+
+	for (i = 0; i < dimx; i += 1) {
+		$(arr + i*8) = #^int alloc(dimy * 8);
+		for (j = 0; j < dimy; j += 1) {
+			$($(arr + i*8) + j*8) = i + j;
+		}
+	}
 
 }
