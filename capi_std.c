@@ -64,8 +64,14 @@ std_alloc(SpyState* spy) {
 	return 1;
 }
 
+static spy_int
+std_delete(SpyState* spy) {
+	return 0;	
+}
+
 SpyCFunc capi_std[] = {
 	{"quit", std_quit},
 	{"alloc", std_alloc},
+	{"delete", std_delete},
 	{NULL, NULL}
 };

@@ -1,6 +1,7 @@
-print: cfunc (format: ^byte, ...) -> void;
-alloc: cfunc (bytes: int) -> ^byte;
-quit:  cfunc (key: int) -> void;
+print:   cfunc (format: ^byte, ...) -> void;
+alloc:   cfunc (bytes: int) -> ^byte;
+delete:  cfunc (ptr: ^byte) -> void;
+quit:    cfunc (code: int) -> void;
 
 /* returns 1 if n is prime, 0 if not */
 is_prime: (n: int) -> int {
@@ -25,7 +26,7 @@ main: () -> void {
 	primes_found: int;
 	result: int;
 	
-	num_primes = 5000;
+	num_primes = 500;
 	primes_found = 0;
 	
 	/* allocate array with (maximum + 1) integers */	
@@ -44,6 +45,9 @@ main: () -> void {
 	/* print the primes */
 	for (i = 0; i < num_primes; i += 1) 
 		print("prime #%d = %d\n", i + 1, array[i]);
+
+	/* cleanup */
+	delete(#^byte array);
 
 }
 
