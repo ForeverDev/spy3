@@ -349,7 +349,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 
 			if (d->type == DATA_FPTR && d->fdesc->is_global) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
-			} else if (d->type == DATA_FPTR && d->mods & MOD_CFUNC) {
+			} else if (d->type == DATA_FPTR && d->mods & MOD_FOREIGN) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
 			} else if ((dont_der && d->type != DATA_STRUCT) || d->array_dim > 0) {
 				/* structs are pointers, use locall */
@@ -383,14 +383,14 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				generate_expression(C, call->fptr);
 			}
 			if (call->computed) {
-				if (call->fptr->eval->mods & MOD_CFUNC) {
+				if (call->fptr->eval->mods & MOD_FOREIGN) {
 					writer(C, "ccfcall %d\n", call->nargs);
 				} else {
 					writer(C, "ccall %d\n", call->nargs);
 				}
 			} else {
 				VarDeclaration* f = get_local(C, call->fptr->sval);
-				if (f->datatype->mods & MOD_CFUNC) {
+				if (f->datatype->mods & MOD_FOREIGN) {
 					writer(C, "cfcall " FORMAT_FUNC ", %d\n", call->fptr->sval, call->nargs);
 				} else {
 					writer(C, "call " FORMAT_FUNC ", %d\n", call->fptr->sval, call->nargs);
@@ -767,7 +767,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	for (VarDeclarationList* i = C.root_node->blockval->locals; i; i = i->next) {
 		VarDeclaration* var = i->decl;
 		Datatype* d = var->datatype;
-		if (d->type == DATA_FPTR && d->mods & MOD_CFUNC) {
+		if (d->type == DATA_FPTR && d->mods & MOD_FOREIGN) {
 			char* d = tostring_datatype(var->datatype);
 			writeb(&C, "; %s: %s\n", var->name, d);
 			free(d);

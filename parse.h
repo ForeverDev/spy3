@@ -7,7 +7,7 @@
 
 #define MOD_STATIC (0x1 << 0)
 #define MOD_CONST  (0x1 << 1)
-#define MOD_CFUNC  (0x1 << 2)
+#define MOD_FOREIGN  (0x1 << 2)
 
 #define IS_PTR(d) (d->ptr_dim > 0)
 #define IS_ARRAY(d) (d->array_dim > 0)

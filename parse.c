@@ -149,7 +149,7 @@ is_keyword(const char* word) {
 	static const char* keywords[] = {
 		"if", "while", "for", "do", "struct",
 		"return", "continue", "break", "const",
-		"static", "cfunc", NULL
+		"static", "foreign", NULL
 	};
 	for (const char** i = keywords; *i; i++) {
 		if (!strcmp(*i, word)) {
@@ -648,8 +648,8 @@ tostring_datatype(const Datatype* data) {
 	if (mods & MOD_CONST) {
 		strcat(buf, "const ");
 	}
-	if (mods & MOD_CFUNC) {
-		strcat(buf, "cfunc ");
+	if (mods & MOD_FOREIGN) {
+		strcat(buf, "foreign ");
 	}
 	switch (data->type) {
 		case DATA_INT:
@@ -770,7 +770,7 @@ matches_datatype(ParseState* P) {
 		|| on_ident(P, "struct")
 		|| on_ident(P, "const")
 		|| on_ident(P, "static")
-		|| on_ident(P, "cfunc")) {
+		|| on_ident(P, "foreign")) {
 		MATCH_TRUE();
 	}
 
@@ -821,10 +821,10 @@ find_function(ParseState* P, const char* name) {
 }
 
 static int
-is_cfunc(ParseState* P, const char* name) {
+is_foreign(ParseState* P, const char* name) {
 	for (VarDeclarationList* i = P->root_node->blockval->locals; i; i = i->next) {
 		VarDeclaration* var = i->decl;
-		if (!strcmp(var->name, name) && var->datatype->type == DATA_FPTR && var->datatype->mods & MOD_CFUNC) {
+		if (!strcmp(var->name, name) && var->datatype->type == DATA_FPTR && var->datatype->mods & MOD_FOREIGN) {
 			return 1;
 		}
 	}
@@ -1398,7 +1398,7 @@ parse_expression(ParseState* P) {
 			at->cval->fptr = expstack_pop(&tree);
 			at->cval->computed = 1; /* assume computed at first */
 			char* name = at->cval->fptr->sval;
-			if (at->cval->fptr->type == EXP_IDENTIFIER && (find_function(P, name) || is_cfunc(P, name))) {
+			if (at->cval->fptr->type == EXP_IDENTIFIER && (find_function(P, name) || is_foreign(P, name))) {
 				at->cval->computed = 0;
 			}
 			expstack_push(&tree, at);
@@ -1677,8 +1677,8 @@ parse_modifiers(ParseState* P) {
 			mod |= MOD_STATIC;
 		} else if (!strcmp(id, "const")) {
 			mod |= MOD_CONST;
-		} else if (!strcmp(id, "cfunc")) {
-			mod |= MOD_CFUNC;
+		} else if (!strcmp(id, "foreign")) {
+			mod |= MOD_FOREIGN;
 		} else {
 			break;
 		}
@@ -1784,8 +1784,8 @@ parse_datatype(ParseState* P) {
 			parse_die(P, "the modifier 'const' cannot be applied to functions");
 		}
 	} else {
-		if (data->mods & MOD_CFUNC) {
-			parse_die(P, "the modifier 'cfunc' can only be applied to functions");
+		if (data->mods & MOD_FOREIGN) {
+			parse_die(P, "the modifier 'foreign' can only be applied to functions");
 		}
 	}
 
@@ -2064,8 +2064,8 @@ generate_syntax_tree(TokenList* tokens) {
 				inc = size*inc;
 			}
 			if (var->datatype->type == DATA_FPTR) {
-				if (var->datatype->mods & MOD_CFUNC && P->current_block != P->root_node) {
-					parse_die(P, "cfunctions must be declared in the global scope");
+				if (var->datatype->mods & MOD_FOREIGN && P->current_block != P->root_node) {
+					parse_die(P, "foreigntions must be declared in the global scope");
 				}	
 			} else {
 				if (!var->datatype->mods & MOD_STATIC && P->current_block == P->root_node) {
@@ -2088,8 +2088,8 @@ generate_syntax_tree(TokenList* tokens) {
 				if (var->datatype->ptr_dim > 0) {
 					parse_die(P, "a function pointer cannot be implemented");
 				}
-				if (var->datatype->mods & MOD_CFUNC) {
-					parse_die(P, "a function with the modifier 'cfunc' cannot be implemented");
+				if (var->datatype->mods & MOD_FOREIGN) {
+					parse_die(P, "a function with the modifier 'foreign' cannot be implemented");
 				}
 
 				/* now that we know it's an implementation, wrap it in

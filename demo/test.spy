@@ -1,7 +1,8 @@
-print:   cfunc (format: ^byte, ...) -> void;
-alloc:   cfunc (bytes: int) -> ^byte;
-delete:  cfunc (ptr: ^byte) -> void;
-quit:    cfunc (code: int) -> void;
+/* cfunc declarations.... TODO put these in an include */
+print:   foreign (format: ^byte, ...) -> void;
+alloc:   foreign (bytes: int) -> ^byte;
+delete:  foreign (ptr: ^byte) -> void;
+quit:    foreign (code: int) -> void;
 
 /* returns 1 if n is prime, 0 if not */
 is_prime: (n: int) -> int {
@@ -24,13 +25,16 @@ main: () -> void {
 	i: int;
 	num_primes: int;
 	primes_found: int;
-	result: int;
 	
 	num_primes = 500;
 	primes_found = 0;
 	
-	/* allocate array with (maximum + 1) integers */	
-	array = #^int alloc(num_primes * sizeof^int);	
+	/* allocate space for the array and ensure it was allocated properly */	
+	array = #^int alloc(num_primes * sizeof int);	
+	if (!array) {
+		print("couldn't allocate space for an array containing %d integers\n", num_primes);
+		quit(1);
+	}
 	
 	/* stick the primes in an array */
 	i = 2;
