@@ -30,7 +30,7 @@ main: () -> void {
 	primes_found = 0;
 	
 	/* allocate array with (maximum + 1) integers */	
-	array = #^int alloc(num_primes * sizeof int);	
+	array = #^int alloc(num_primes * sizeof^int);	
 	
 	/* stick the primes in an array */
 	i = 2;
