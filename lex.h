@@ -39,6 +39,7 @@ typedef enum TokenType TokenType;
 #define SPEC_CALL			26
 #define SPEC_DOTS			27 /* ... */
 #define SPEC_CAST			28
+#define SPEC_INDEX			29
 
 enum TokenType {
 	TOK_NOTOK = 0,

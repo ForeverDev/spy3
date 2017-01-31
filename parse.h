@@ -1,12 +1,22 @@
 #ifndef PARSE_H
 #define PARSE_H
 
+#include <stdio.h>
 #include "lex.h"
 #include "spy_types.h"
 
 #define MOD_STATIC (0x1 << 0)
 #define MOD_CONST  (0x1 << 1)
 #define MOD_CFUNC  (0x1 << 2)
+
+#define IS_PTR(d) (d->ptr_dim > 0)
+#define IS_ARRAY(d) (d->array_dim > 0)
+#define IS_STRUCT(d) (d->sdesc != NULL)
+#define IS_INT(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_INT)
+#define IS_FLOAT(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_FLOAT)
+#define IS_BYTE(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_BYTE)
+#define IS_STRING(d) (d->ptr_dim == 1 && d->array_dim == 0 && d->type == DATA_BYTE)
+#define IS_CT_CONSTANT(e) (e->type == EXP_INTEGER)
 
 /* t is a bval node */
 #define IS_ASSIGN(t) ((t)->optype == '=' || \
@@ -63,6 +73,7 @@ typedef struct ParseState ParseState;
 typedef struct ExpNode ExpNode;
 typedef struct BinaryOp BinaryOp;
 typedef struct UnaryOp UnaryOp;
+typedef struct ArrayIndex ArrayIndex;
 typedef struct Cast Cast;
 
 typedef enum ExpNodeType ExpNodeType;
@@ -99,6 +110,11 @@ struct BinaryOp {
 	ExpNode* right;
 };
 
+struct ArrayIndex {
+	ExpNode* array;
+	ExpNode* index;
+};
+
 struct UnaryOp {
 	char optype;
 	ExpNode* operand;
@@ -133,6 +149,7 @@ struct ExpNode {
 		char* sval;
 		FuncCall* cval;
 		Cast* cxval;
+		ArrayIndex* aval;
 	};
 };
 
@@ -263,6 +280,7 @@ struct TreeNode {
 	/* an else statement doesn't evaluate to an actual node... rather,
 	 * if a token follows an else token, its is_else field is marked 1 */
 	int is_else;
+	int line;
 	TreeNode* parent;
 	TreeNode* next;
 	TreeNode* prev;

@@ -2,24 +2,46 @@ print: cfunc (format: ^byte, ...) -> void;
 alloc: cfunc (bytes: int) -> ^byte;
 quit:  cfunc (key: int) -> void;
 
+/* returns 1 if n is prime, 0 if not */
+is_prime: (n: int) -> int {
+	
+	i: int;
+
+	if (n % 2 == 0)
+		return 0;
+		
+	for (i = 3; i*i <= n; i += 2)
+		if (n % i == 0)
+			return 0;
+	
+	return 1;
+}
+
 main: () -> void {
 	
-	arr: ^^int;
-	dimx: int;
-	dimy: int;
+	array: ^int;
 	i: int;
-	j: int;
-
-	dimx = 10;
-	dimy = 20;
-
-	arr = #^^int alloc(dimx * 8);
-
-	for (i = 0; i < dimx; i += 1) {
-		$(arr + i*8) = #^int alloc(dimy * 8);
-		for (j = 0; j < dimy; j += 1) {
-			$($(arr + i*8) + j*8) = i + j;
+	num_primes: int;
+	primes_found: int;
+	
+	num_primes = 20;
+	primes_found = 0;
+	
+	/* allocate array with (maximum + 1) integers */	
+	array = #^int alloc(num_primes * sizeof int);	
+	
+	/* stick the primes in an array */
+	for (i = 0; primes_found < num_primes; i += 1) {
+		if (is_prime(i)) {
+			$(array + primes_found) = i;
+			primes_found += 1;
 		}
 	}
 
+	/* print the primes */
+	for (i = 0; i < num_primes; i += 1) {
+		print("prime #%d = %d\n", i + 1, $(array + i));
+	}
+
 }
+

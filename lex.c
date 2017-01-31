@@ -180,6 +180,27 @@ lex_int(LexState* L) {
 }
 
 static void
+lex_operator(LexState* L) {
+	Token* tok;
+	const TokenListing* found = NULL;
+	for (const TokenListing* i = token_listing; i->word; i++) {
+		if (!strncmp(L->contents, i->word, strlen(i->word))) {
+			found = i;
+			L->contents += strlen(i->word);
+			break;
+		}
+	}
+	tok = malloc(sizeof(Token));
+	tok->type = TOK_OPERATOR;
+	if (found) {
+		tok->oval = found->code;
+	} else {
+		tok->oval = *L->contents++;
+	}
+	append_token(L, tok);
+}
+
+static void
 lex_identifier(LexState* L) {
 	Token* tok;
 	char* buf;
@@ -193,6 +214,15 @@ lex_identifier(LexState* L) {
 	buf = malloc(len + 1);
 	memcpy(buf, start, len);
 	buf[len] = 0;
+	/* special case where an operator is an identifier (sizeof, typename, etc) */
+	for (const TokenListing* i = token_listing; i->word; i++) {
+		if (!strcmp(buf, i->word)) {
+			free(buf);
+			L->contents = start;
+			lex_operator(L);
+			return;
+		}
+	}
 	tok = malloc(sizeof(Token));
 	tok->type = TOK_IDENTIFIER;
 	tok->sval = buf;
@@ -218,27 +248,6 @@ lex_string(LexState* L) {
 	tok = malloc(sizeof(Token));
 	tok->type = TOK_STRING;
 	tok->sval = buf;
-	append_token(L, tok);
-}
-
-static void
-lex_operator(LexState* L) {
-	Token* tok;
-	const TokenListing* found = NULL;
-	for (const TokenListing* i = token_listing; i->word; i++) {
-		if (!strncmp(L->contents, i->word, strlen(i->word))) {
-			found = i;
-			L->contents += strlen(i->word);
-			break;
-		}
-	}
-	tok = malloc(sizeof(Token));
-	tok->type = TOK_OPERATOR;
-	if (found) {
-		tok->oval = found->code;
-	} else {
-		tok->oval = *L->contents++;
-	}
 	append_token(L, tok);
 }
 

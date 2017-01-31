@@ -146,6 +146,7 @@ popb(CompileState* C) {
 
 	/* now write the instructions */
 	LiteralList* i = tail->ins;
+	writeb(C, "; ins pop\n; ----------\n");
 	while (i) {
 		/* write the instruction */
 		writeb(C, i->literal);	
@@ -156,6 +157,7 @@ popb(CompileState* C) {
 		free(to_free->literal);
 		free(to_free);
 	}
+	writeb(C, "; ----------\n");
 
 	free(tail);
 }
@@ -349,7 +351,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
 			} else if (d->type == DATA_FPTR && d->mods & MOD_CFUNC) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
-			} else if (dont_der && d->type != DATA_STRUCT) {
+			} else if ((dont_der && d->type != DATA_STRUCT) || d->array_dim > 0) {
 				/* structs are pointers, use locall */
 				writer(C, "lea %d\n", var->offset);
 			} else {
@@ -396,15 +398,35 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			}
 			break;
 		}
+		case EXP_INDEX: {
+			ArrayIndex* index = exp->aval;
+			generate_expression(C, index->array);
+			generate_expression(C, index->index);
+			/* ... pointer arithmetic ... */
+			writer(C, "iconst %d\n", exp->eval->size);
+			writer(C, "imul\n");
+			writer(C, "iadd\n");
+			if (!dont_der) {
+				writer(C, "ider\n");
+			}
+			break;
+		}
 		case EXP_UNARY: {
 			ExpNode* operand = exp->uval->operand;
 			generate_expression(C, operand);
-			if (exp->uval->optype == '$') {
-				/* don't dereference if the parent is an assignment */
-				if (!(parent && parent->type == EXP_BINARY && IS_ASSIGN(parent->bval) && exp->side == LEAF_LEFT)) {
-					int prefix = get_prefix_b(exp->eval);
-					writer(C, "%cder\n", prefix);
+			switch (exp->uval->optype) {
+				case '$': {
+					/* don't dereference if the parent is an assignment */
+					/* @TODO problem? */
+					if (!dont_der) {
+						int prefix = get_prefix_b(exp->eval);
+						writer(C, "%cder\n", prefix);
+					}
+					break;
 				}
+				case '!':
+					writer(C, "not\n");
+					break;
 			}
 			break;
 		}
@@ -424,7 +446,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					field = get_field(lhs->eval->sdesc, rhs->sval);
 				}
 				writer(C, "iinc %d\n", field->offset);	
-				if (!is_assign) {
+				if (!dont_der) {
 					writer(C, "%cder\n", get_prefix_b(exp->eval));	
 				}
 			} else if (exp->bval->optype == '=') {
@@ -480,12 +502,18 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			} else { 
 				generate_expression(C, lhs);
 				generate_expression(C, rhs);
+				const Datatype* leval = lhs->eval;
+				const Datatype* reval = rhs->eval;
 				if (exp->bval->optype == ',') {
 					break;
 				}
 				char prefix = get_prefix(exp->eval);
 				switch (exp->bval->optype) {
 					case '+':
+						if (IS_PTR(leval) && IS_INT(reval)) {
+							/* pointer arithmetic, multiply by size of pointer */
+							writer(C, "iconst %d\nimul\n", leval->size);
+						}
 						writer(C, "%cadd", prefix);	
 						break;
 					case '-':
@@ -568,7 +596,7 @@ generate_condition(CompileState* C, ExpNode* condition) {
 		C->cond_jmp = 0;
 		if (!IS_COMPARE(condition)) {
 			writeb(C, "%ctest\n", get_prefix(condition->eval));
-			writeb(C, "jz " FORMAT_LABEL "\n", C->break_label);
+			writeb(C, "jz " FORMAT_LABEL "\n", C->bottom_label);
 		}
 	} else {
 		writeb(C, "iconst 0\n");
@@ -689,7 +717,9 @@ initialize_local(CompileState* C, VarDeclaration* var) {
 	}
 	int is_ptr = var->datatype->ptr_dim > 0;
 	writeb(C, "; initialize '%s'\n", var->name);
-	if (d->type == DATA_STRUCT && !is_ptr) {
+	if (d->array_dim > 0) {
+		writeb(C, "lea %d\n", var->offset);
+	} else if (d->type == DATA_STRUCT && !is_ptr) {
 		/* if it's a struct, initialize it as a pointer to stack space */
 		/* note a struct's stack space exists 8 bytes after its pointer */
 		writeb(C, "lea %d\n", var->offset + 8);
@@ -746,6 +776,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	}
 	
 	do {
+		writeb(&C, "; line %d\n", C.focus->line);
 		switch (C.focus->type) {
 			case NODE_IF:
 				generate_if(&C);

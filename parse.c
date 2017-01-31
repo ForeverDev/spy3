@@ -77,8 +77,9 @@ static TreeStruct* find_struct(ParseState*, const char*);
 static void print_debug_info(ParseState*);
 static void print_struct_info(TreeStruct*, unsigned int);
 static VarDeclaration* find_field(const TreeStruct*, const char*);
-static TreeNode* empty_node();
+static TreeNode* empty_node(ParseState*);
 static void fold_expression(ParseState*, ExpNode*);
+static void safe_eat(ParseState*);
 
 static const OpEntry prec[127] = {
 	[',']				= {1, ASSOC_LEFT, OP_BINARY},
@@ -117,7 +118,8 @@ static const OpEntry prec[127] = {
 	['.']				= {11, ASSOC_LEFT, OP_BINARY},
 	[SPEC_INC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
 	[SPEC_DEC_ONE]		= {11, ASSOC_LEFT, OP_UNARY},
-	[SPEC_CALL]			= {11, ASSOC_LEFT, OP_UNARY}
+	[SPEC_CALL]			= {11, ASSOC_LEFT, OP_UNARY},
+	[SPEC_INDEX]		= {11, ASSOC_LEFT, OP_UNARY}
 };
 
 static void
@@ -132,6 +134,14 @@ parse_die(ParseState* P, const char* message, ...) {
 	printf("\n\n");
 	va_end(args);
 	exit(1);
+}
+
+static void
+safe_eat(ParseState* P) {
+	if (!P->tokens) {
+		parse_die(P, "unexpected EOF\n");
+	}
+	P->tokens = P->tokens->next;
 }
 
 static int
@@ -163,12 +173,13 @@ is_typename(const char* word) {
 }
 
 static TreeNode*
-empty_node() {
+empty_node(ParseState* P) {
 	TreeNode* node = malloc(sizeof(TreeNode));
 	node->parent = NULL;
 	node->next = NULL;
 	node->prev = NULL;
 	node->is_else = 0;
+	node->line = P->tokens->token->line;
 	return node;
 }
 
@@ -183,7 +194,7 @@ assert_operator(ParseState* P, char type) {
 static void
 eat_op(ParseState* P, char type) {
 	assert_operator(P, type);
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 }
 
 /* ends on marked operator */
@@ -543,6 +554,11 @@ print_expression(ExpNode* exp, int indent) {
 			print_expression(exp->cval->fptr, indent + 1);
 			print_expression(exp->cval->arguments, indent + 1);
 			break;
+		case EXP_INDEX:
+			printf("INDEX\n");
+			print_expression(exp->aval->array, indent + 1);
+			print_expression(exp->aval->index, indent + 1);
+			break;
 		case EXP_CAST: {
 			char* d = tostring_datatype(exp->cxval->d);
 			printf("# %s\n", d);
@@ -697,11 +713,11 @@ matches_declaration(ParseState* P) {
 	if (!is_ident(P)) {
 		MATCH_FALSE();
 	}
-	P->tokens = P->tokens->next;	
+	safe_eat(P);	
 	if (!on_op(P, ':')) {
 		MATCH_FALSE();
 	}
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 	if (!matches_datatype(P)) {
 		MATCH_FALSE();
 	}
@@ -924,6 +940,9 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					d->ptr_dim--;
 					return exp->eval = d;
 				}
+				case '!':
+					typecheck_expression(P, exp->uval->operand);
+					return exp->eval = P->type_int;
 				default:
 					return exp->eval = typecheck_expression(P, exp->uval->operand);
 			}
@@ -935,6 +954,20 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 				parse_die(P, "undeclared identifier '%s'", exp->sval);
 			}
 			return exp->eval = var->datatype;
+		}
+		case EXP_INDEX: {
+			const Datatype* array = typecheck_expression(P, exp->aval->array);
+			const Datatype* index = typecheck_expression(P, exp->aval->index);
+			if (!(index->type == DATA_INT && index->ptr_dim == 0 && index->array_dim == 0)) {
+				parse_die(P, "an array index must evaluate to an integer");
+			}
+			if (array->array_dim == 0) {
+				parse_die(P, "attempt to index a non-array");
+			}
+			Datatype* ret = malloc(sizeof(Datatype));
+			memcpy(ret, array, sizeof(Datatype));
+			ret->array_dim--;
+			return exp->eval = ret;
 		}
 		case EXP_CAST: {
 			const Datatype* from = typecheck_expression(P, exp->cxval->operand);
@@ -1021,7 +1054,6 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 		case EXP_BINARY: {
 			switch (exp->bval->optype) {
 				case '.': {
-					/* LHS must be either an identifier or another '.' */
 					ExpNode* lhs = exp->bval->left;
 					ExpNode* rhs = exp->bval->right;
 					if (rhs->type != EXP_IDENTIFIER) {
@@ -1051,7 +1083,7 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 						lhs->eval = NULL;
 						rhs->eval = NULL;
 						return exp->eval = field->datatype;
-					} else if (lhs->type == EXP_BINARY && lhs->bval->optype == '.') {
+					} else {
 						/* it's a dot chain... the struct we need to check will be returned
 						 * from a recursive typecheck call */
 						const Datatype* str = typecheck_expression(P, lhs);
@@ -1065,8 +1097,6 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 						}
 						rhs->eval = NULL;
 						return exp->eval = field->datatype;
-					} else {
-						parse_die(P, "the left side of the '.' operator must be an identifier");
 					}
 					break;
 				}
@@ -1183,7 +1213,7 @@ parse_expression(ParseState* P) {
 
 	/* first, just use shunting yard to organize the tokens */
 
-	for (; P->tokens != P->marked; P->tokens = P->tokens->next) {
+	for (; P->tokens != P->marked; safe_eat(P)) {
 		Token* tok = P->tokens->token;	
 		Token* prev = NULL;
 		if (P->tokens->prev) {
@@ -1196,7 +1226,7 @@ parse_expression(ParseState* P) {
 				(prev->type == TOK_IDENTIFIER && !is_keyword(prev->sval) && !is_typename(prev->sval))
 			)
 		) {
-			P->tokens = P->tokens->next; /* advance to first argument token */
+			safe_eat(P); /* advance to first argument token */
 			/* save mark */
 			TokenList* marksave = P->marked;
 			mark_operator(P, '(', ')');
@@ -1217,9 +1247,25 @@ parse_expression(ParseState* P) {
 			shunting_pops(&postfix, &operators, info);
 			expstack_push(&operators, push);
 		} else if (tok->type == TOK_OPERATOR && tok->oval == '[') {
+			safe_eat(P); /* advance to first token in index */
+			if (on_op(P, ']')) {
+				parse_die(P, "expected array index, got token ']'");
+			}
 			/* TODO implement array indexing */	
+			TokenList* marksave = P->marked;
+			mark_operator(P, '[', ']');
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->type = EXP_INDEX;
+			push->parent = NULL;
+			push->aval = malloc(sizeof(ArrayIndex));
+			push->aval->array = NULL;
+			push->aval->index = parse_expression(P);
+			P->marked = marksave;
+			const OpEntry* info = &prec[SPEC_INDEX];
+			shunting_pops(&postfix, &operators, info);
+			expstack_push(&operators, push);
 		} else if (tok->type == TOK_OPERATOR && tok->oval == '#') {
-			P->tokens = P->tokens->next;
+			safe_eat(P);
 			if (!matches_datatype(P)) {
 				parse_die(P, "expected datatype to follow token '#'");
 			}
@@ -1229,6 +1275,19 @@ parse_expression(ParseState* P) {
 			push->cxval = malloc(sizeof(Cast));
 			push->cxval->d = parse_datatype(P);
 			expstack_push(&operators, push);
+		} else if (tok->type == TOK_OPERATOR && tok->oval == SPEC_SIZEOF) {
+			safe_eat(P);
+			if (!matches_datatype(P)) {
+				parse_die(P, "expected datatype to follow token 'sizeof'");
+			}
+			Datatype* d = parse_datatype(P);
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->type = EXP_INTEGER;
+			push->parent = NULL;
+			push->ival = d->size; 
+			free(d);
+			expstack_push(&postfix, push);
+			print_token(P->tokens->token);
 		} else if (tok->type == TOK_OPERATOR) {
 			/* use assoc to make sure it exists */
 			if (prec[tok->oval].assoc) {
@@ -1330,6 +1389,9 @@ parse_expression(ParseState* P) {
 			if (at->cval->fptr->type == EXP_IDENTIFIER && (find_function(P, name) || is_cfunc(P, name))) {
 				at->cval->computed = 0;
 			}
+			expstack_push(&tree, at);
+		} else if (at->type == EXP_INDEX) {
+			at->aval->array = expstack_pop(&tree);
 			expstack_push(&tree, at);
 		} else if (at->type == EXP_UNARY) {
 			ExpNode* operand = expstack_pop(&tree);
@@ -1466,7 +1528,7 @@ fold_expression(ParseState* P, ExpNode* exp) {
 static void
 jump_out(ParseState* P) {
 	/* skip } */
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 	do {
 		P->current_block = P->current_block->parent;
 	} while (P->current_block->type != NODE_BLOCK);
@@ -1474,10 +1536,10 @@ jump_out(ParseState* P) {
 
 static void
 parse_break(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_BREAK;
 
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 	eat_op(P, ';');
 
 	append_node(P, node);
@@ -1485,10 +1547,10 @@ parse_break(ParseState* P) {
 
 static void
 parse_continue(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_CONTINUE;
 
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 	eat_op(P, ';');
 
 	append_node(P, node);
@@ -1496,16 +1558,16 @@ parse_continue(ParseState* P) {
 
 static void
 parse_return(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_RETURN;
 	node->stateval = malloc(sizeof(TreeStatement));
 	
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
 	fold_expression(P, node->stateval->exp);
-	P->tokens = P->tokens->next; /* skip ; */
+	safe_eat(P); /* skip ; */
 
 	append_node(P, node);
 	
@@ -1513,14 +1575,14 @@ parse_return(ParseState* P) {
 
 static void
 parse_block(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_BLOCK;
 	node->blockval = malloc(sizeof(TreeBlock));
 	node->blockval->child = NULL;
 	node->blockval->locals = NULL;
 
 	/* skip over { */
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 
 	append_node(P, node);
 }
@@ -1540,7 +1602,7 @@ parse_function_descriptor(ParseState* P) {
 	fdesc->is_global = 0;
 	fdesc->vararg = 0;
 
-	P->tokens = P->tokens->next; /* skip ( */
+	safe_eat(P); /* skip ( */
 
 	while (!on_op(P, ')')) {
 		if (!matches_declaration(P) && !on_op(P, SPEC_DOTS)) {
@@ -1548,17 +1610,16 @@ parse_function_descriptor(ParseState* P) {
 		}
 		if (on_op(P, SPEC_DOTS)) {
 			fdesc->vararg = 1;
-			P->tokens = P->tokens->next;
+			safe_eat(P);
 			break;
 		}
 		VarDeclaration* arg = parse_declaration(P);
 		arg->offset = fdesc->arg_space;
 		fdesc->nargs++;
 		fdesc->arg_space += arg->datatype->size;
-		if (arg->datatype->type == DATA_STRUCT && arg->datatype->ptr_dim == 0) {
-			/* an extra 8 bytes are needed for a struct because it is implemented
-			 * on the stack with a pointer */
-			 fdesc->arg_space += 8;
+		if (IS_STRUCT(arg->datatype) && !IS_PTR(arg->datatype)) {
+			/* if a struct is an argument it is implicitly a pointer */
+			arg->datatype->size = 8;
 		}
 		if (!fdesc->arguments) {
 			fdesc->arguments = malloc(sizeof(VarDeclarationList));
@@ -1609,7 +1670,7 @@ parse_modifiers(ParseState* P) {
 		} else {
 			break;
 		}
-		P->tokens = P->tokens->next;
+		safe_eat(P);
 	}
 	
 	return mod;
@@ -1630,18 +1691,27 @@ parse_datatype(ParseState* P) {
 	/* is array type */
 	/* TODO handle more than one array */
 	while (on_op(P, '[')) {
-		P->tokens = P->tokens->next;
+		safe_eat(P);
+		if (on_op(P, ']')) {
+			parse_die(P, "expected size of array to follow token '['");
+		}
+		mark_operator(P, '[', ']');
+		ExpNode* size = parse_expression(P);
+		typecheck_expression(P, size);
+		fold_expression(P, size);
+		if (!IS_CT_CONSTANT(size)) {
+			parse_die(P, "the size of an array must evaluate to a compile-time constant");
+		}
 		data->array_dim++;
 		data->array_size = realloc(data->array_size, data->array_dim * sizeof(unsigned int));
-		data->array_size[data->array_dim - 1] = P->tokens->token->ival;
-		P->tokens = P->tokens->next;
-		P->tokens = P->tokens->next; /* skip closing ] */
+		data->array_size[data->array_dim - 1] = size->ival;
+		safe_eat(P);
 	}
 
 	/* is pointer type */
 	while (on_op(P, '^')) {
 		data->ptr_dim++;
-		P->tokens = P->tokens->next;
+		safe_eat(P);
 	}
 
 	/* now it should be on the typename or function descriptor... e.g.
@@ -1718,15 +1788,15 @@ parse_declaration(ParseState* P) {
 	/* read identifier */
 	decl->name = malloc(strlen(P->tokens->token->sval) + 1);
 	strcpy(decl->name, P->tokens->token->sval);
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 
 	/* skip ':' */
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 
 	/* read datatype */
 	decl->datatype = parse_datatype(P);
 
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 
 	return decl;
 }
@@ -1750,7 +1820,7 @@ parse_struct(ParseState* P) {
 	desc->size = 0;
 	
 	/* skip token 'struct' */ 
-	P->tokens = P->tokens->next;	
+	safe_eat(P);	
 
 	/* record name */
 	if (!is_ident(P)) {
@@ -1758,7 +1828,7 @@ parse_struct(ParseState* P) {
 	}
 	str->name = malloc(strlen(P->tokens->token->sval) + 1);
 	strcpy(str->name, P->tokens->token->sval);
-	P->tokens = P->tokens->next;
+	safe_eat(P);
 
 	eat_op(P, '{');
 
@@ -1810,7 +1880,7 @@ parse_struct(ParseState* P) {
 
 static void
 parse_statement(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_STATEMENT;
 	node->stateval = malloc(sizeof(TreeStatement));
 	
@@ -1819,27 +1889,27 @@ parse_statement(ParseState* P) {
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
 	fold_expression(P, node->stateval->exp);
-	P->tokens = P->tokens->next; /* skip ; */
+	safe_eat(P); /* skip ; */
 
 	append_node(P, node);
 }
 
 static void 
 parse_if(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_IF;
 	node->ifval = malloc(sizeof(TreeIf));
 	node->ifval->child = NULL;
 	node->ifval->has_else = 0;
 
 	/* starts on token IF */
-	P->tokens = P->tokens->next; /* skip IF */
+	safe_eat(P); /* skip IF */
 	eat_op(P, '(');
 	mark_operator(P, '(', ')');
 	node->ifval->condition = parse_expression(P);
 	typecheck_expression(P, node->ifval->condition);
 	fold_expression(P, node->ifval->condition);
-	P->tokens = P->tokens->next; /* skip ')' */
+	safe_eat(P); /* skip ')' */
 
 	append_node(P, node);
 
@@ -1852,19 +1922,19 @@ parse_else(ParseState* P) {
 
 static void 
 parse_while(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_WHILE;
 	node->whileval = malloc(sizeof(TreeWhile));
 	node->whileval->child = NULL;
 
 	/* starts on token WHILE */
-	P->tokens = P->tokens->next; /* skip WHILE */
+	safe_eat(P); /* skip WHILE */
 	eat_op(P, '(');
 	mark_operator(P, '(', ')');
 	node->whileval->condition = parse_expression(P);
 	typecheck_expression(P, node->whileval->condition);
 	fold_expression(P, node->whileval->condition);
-	P->tokens = P->tokens->next; /* skip ')' */
+	safe_eat(P); /* skip ')' */
 
 	append_node(P, node);
 
@@ -1872,29 +1942,29 @@ parse_while(ParseState* P) {
 
 static void
 parse_for(ParseState* P) {
-	TreeNode* node = malloc(sizeof(TreeNode));
+	TreeNode* node = empty_node(P);
 	node->type = NODE_FOR;
 	node->forval = malloc(sizeof(TreeFor));
 	node->forval->child = NULL;
 	
 	/* starts on token FOR */
-	P->tokens = P->tokens->next; /* skip FOR */
+	safe_eat(P); /* skip FOR */
 	eat_op(P, '(');
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->init = parse_expression(P);
 	typecheck_expression(P, node->forval->init);
 	fold_expression(P, node->forval->init);
-	P->tokens = P->tokens->next; /* skip ; */
+	safe_eat(P); /* skip ; */
 	mark_operator(P, SPEC_NULL, ';');
 	node->forval->condition = parse_expression(P);
 	typecheck_expression(P, node->forval->condition);
 	fold_expression(P, node->forval->condition);
-	P->tokens = P->tokens->next; /* skip ; */
+	safe_eat(P); /* skip ; */
 	mark_operator(P, '(', ')');
 	node->forval->statement = parse_expression(P);
 	typecheck_expression(P, node->forval->statement);
 	fold_expression(P, node->forval->statement);
-	P->tokens = P->tokens->next; /* skip ) */
+	safe_eat(P); /* skip ) */
 
 	append_node(P, node);
 }
@@ -1906,7 +1976,7 @@ generate_syntax_tree(TokenList* tokens) {
 	P->tokens = tokens;
 	P->defined_structs = NULL;
 	P->marked = NULL;
-	P->root_node = malloc(sizeof(TreeNode));
+	P->root_node = empty_node(P);
 	P->root_node->type = NODE_BLOCK;
 	P->root_node->blockval = malloc(sizeof(TreeBlock));
 	P->root_node->blockval->child = NULL;
@@ -1979,7 +2049,7 @@ generate_syntax_tree(TokenList* tokens) {
 				for (int i = 0; i < var->datatype->array_dim; i++) {
 					size *= var->datatype->array_size[i];
 				}
-				inc = size * inc;
+				inc = size*inc;
 			}
 			if (var->datatype->type == DATA_FPTR) {
 				if (var->datatype->mods & MOD_CFUNC && P->current_block != P->root_node) {
@@ -2012,7 +2082,7 @@ generate_syntax_tree(TokenList* tokens) {
 
 				/* now that we know it's an implementation, wrap it in
 				 * a node and append it to the tree */
-				TreeNode* node = malloc(sizeof(TreeNode));
+				TreeNode* node = empty_node(P);
 				node->parent = NULL;
 				node->next = NULL;
 				node->prev = NULL;

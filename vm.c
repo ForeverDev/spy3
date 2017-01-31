@@ -102,6 +102,7 @@ const SpyInstruction spy_instructions[255] = {
 	{"fsave", 0x59, {OP_NONE}},				/* [int addr, float value] -> [] */
 	{"mod", 0x5A, {OP_NONE}},				/* [int a, int b] -> [int result] */
 	{"ccfcall", 0x5B, {OP_INT64}},			/* [char* name] -> [int ip_save, int bp_save, int nargs] */
+	{"not", 0x5C, {OP_NONE}},				/* [int value] -> [int !value] */
 
 	/* debuggers */
 	{"ilog", 0xFD, {OP_NONE}},				
@@ -955,6 +956,11 @@ spy_execute(const char* filename) {
 				cfunc->f(spy);
 				break;
 			}
+
+			/* NOT */
+			case 0x5C:
+				spy_push_int(spy, !spy_pop_int(spy));
+				break;
 
 			/* ILOG */
 			case 0xFD:
