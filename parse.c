@@ -752,7 +752,15 @@ matches_datatype(ParseState* P) {
 	}
 
 	if (on_op(P, '(')) {
-		MATCH_TRUE();
+		safe_eat(P);
+		if (on_op(P, ')')) {
+			MATCH_TRUE();
+		}
+		int result = matches_declaration(P);
+		if (result) {
+			MATCH_TRUE();
+		}
+		MATCH_FALSE();
 	}
 
 	if (   on_ident(P, "int") 
@@ -1223,8 +1231,21 @@ parse_expression(ParseState* P) {
 		if (P->tokens->prev) {
 			prev = P->tokens->prev->token;
 		}
-		/* function call? */
-		if (prev && tok->type == TOK_OPERATOR && tok->oval == '(' && 
+		if (tok->type == TOK_OPERATOR && tok->oval == SPEC_SIZEOF) {
+			safe_eat(P);
+			if (!matches_datatype(P)) {
+				parse_die(P, "expected datatype to follow token 'sizeof'");
+			}
+			Datatype* d = parse_datatype(P);
+			ExpNode* push = malloc(sizeof(ExpNode));
+			push->type = EXP_INTEGER;
+			push->parent = NULL;
+			push->ival = d->size; 
+			free(d);
+			expstack_push(&postfix, push);
+			print_token(P->tokens->token);
+		/* function call? (TODO doesnt work in all cases) */
+		} else if (prev && tok->type == TOK_OPERATOR && tok->oval == '(' && 
 			(
 				(prev->type == TOK_OPERATOR && prev->oval == ')') ||
 				(prev->type == TOK_IDENTIFIER && !is_keyword(prev->sval) && !is_typename(prev->sval))
@@ -1279,19 +1300,6 @@ parse_expression(ParseState* P) {
 			push->cxval = malloc(sizeof(Cast));
 			push->cxval->d = parse_datatype(P);
 			expstack_push(&operators, push);
-		} else if (tok->type == TOK_OPERATOR && tok->oval == SPEC_SIZEOF) {
-			safe_eat(P);
-			if (!matches_datatype(P)) {
-				parse_die(P, "expected datatype to follow token 'sizeof'");
-			}
-			Datatype* d = parse_datatype(P);
-			ExpNode* push = malloc(sizeof(ExpNode));
-			push->type = EXP_INTEGER;
-			push->parent = NULL;
-			push->ival = d->size; 
-			free(d);
-			expstack_push(&postfix, push);
-			print_token(P->tokens->token);
 		} else if (tok->type == TOK_OPERATOR) {
 			/* use assoc to make sure it exists */
 			if (prec[tok->oval].assoc) {
