@@ -958,15 +958,19 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 		case EXP_INDEX: {
 			const Datatype* array = typecheck_expression(P, exp->aval->array);
 			const Datatype* index = typecheck_expression(P, exp->aval->index);
-			if (!(index->type == DATA_INT && index->ptr_dim == 0 && index->array_dim == 0)) {
+			if (!IS_INT(index)) {
 				parse_die(P, "an array index must evaluate to an integer");
 			}
-			if (array->array_dim == 0) {
-				parse_die(P, "attempt to index a non-array");
+			if (!IS_ARRAY(array) && !IS_PTR(array)) {
+				parse_die(P, "attempt to index a non-pointer/array");
 			}
 			Datatype* ret = malloc(sizeof(Datatype));
 			memcpy(ret, array, sizeof(Datatype));
-			ret->array_dim--;
+			if (ret->array_dim > 0) { 
+				ret->array_dim--;
+			} else {
+				ret->ptr_dim--;
+			}
 			return exp->eval = ret;
 		}
 		case EXP_CAST: {
