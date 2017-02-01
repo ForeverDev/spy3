@@ -80,6 +80,7 @@ static VarDeclaration* find_field(const TreeStruct*, const char*);
 static TreeNode* empty_node(ParseState*);
 static void fold_expression(ParseState*, ExpNode*);
 static void safe_eat(ParseState*);
+static int actual_data_size(Datatype*);
 
 static const OpEntry prec[127] = {
 	[',']				= {1, ASSOC_LEFT, OP_BINARY},
@@ -195,6 +196,21 @@ static void
 eat_op(ParseState* P, char type) {
 	assert_operator(P, type);
 	safe_eat(P);
+}
+
+static int
+actual_data_size(Datatype* d) {
+	switch (d->type) {
+		case DATA_INT:
+		case DATA_FLOAT:
+		case DATA_FILE:
+			return 8;
+		case DATA_BYTE:
+			return 1;
+		case DATA_STRUCT:
+			return d->sdesc->desc->size;		
+	}
+	return 8; /* unknown type? */
 }
 
 /* ends on marked operator */
@@ -979,6 +995,10 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 			} else {
 				ret->ptr_dim--;
 			}
+			/* no longer an address? fill actual size */
+			if (!IS_ARRAY(ret) && !IS_PTR(ret)) {
+				ret->size = actual_data_size(ret);
+			}
 			return exp->eval = ret;
 		}
 		case EXP_CAST: {
@@ -1187,6 +1207,7 @@ shunting_pops(ExpStack** postfix, ExpStack** operators, const OpEntry* info) {
 		int top_is_binary = top->type == EXP_BINARY;
 		int top_is_call = top->type == EXP_CALL;
 		int top_is_cast = top->type == EXP_CAST;
+		int top_is_index = top->type == EXP_INDEX;
 		const OpEntry* top_info;
 		if (top_is_unary) {
 			/* unary operator is on top of stack */
@@ -1198,6 +1219,8 @@ shunting_pops(ExpStack** postfix, ExpStack** operators, const OpEntry* info) {
 			top_info = &prec[SPEC_CALL];
 		} else if (top_is_cast) {
 			top_info = &prec[SPEC_CAST];
+		} else if (top_is_index) {
+			top_info = &prec[SPEC_INDEX];
 		}
 		/* found open parenthesis, break */
 		if (top_is_unary && top->uval->optype == '(') {
@@ -1243,7 +1266,6 @@ parse_expression(ParseState* P) {
 			push->ival = d->size; 
 			free(d);
 			expstack_push(&postfix, push);
-			print_token(P->tokens->token);
 		/* function call? (TODO doesnt work in all cases) */
 		} else if (prev && tok->type == TOK_OPERATOR && tok->oval == '(' && 
 			(
@@ -2139,7 +2161,7 @@ generate_syntax_tree(TokenList* tokens) {
 		parse_die(P, "function 'main' not found");
 	}
 
-	print_debug_info(P);
+	//print_debug_info(P);
 
 	/* TODO cleanup tokens + other stuff */
 

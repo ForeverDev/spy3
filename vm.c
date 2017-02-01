@@ -173,7 +173,7 @@ spy_code_float() {
 	return ret;
 }
 
-static void
+void
 spy_die(const char* msg, ...) {
 	va_list args;
 	va_start(args, msg);
@@ -342,6 +342,8 @@ spy_execute(const char* filename) {
 	#define PUSHFLAG(flag) spy_push_int(spy, (spy->flags & (flag)) != 0)
 	
 	#define PUSHNOTFLAG(flag) spy_push_int(spy, !(spy->flags & (flag)))
+
+	#define BOUNDS_CHECK(addr) if (addr <= 0 || addr >= START_MEMORY + SIZE_MEMORY) spy_die("segmentation fault (addr=0x%X)", addr)
 	
 	uint64_t instructions = 0;			
 
@@ -638,19 +640,26 @@ spy_execute(const char* filename) {
 				return;
 
 			/* IDER */
-			case 0x28:
-				spy_push_int(spy, *(spy_int *)&spy->memory[spy_pop_int(spy)]);
+			case 0x28: {
+				spy_int addr = spy_pop_int(spy);
+				BOUNDS_CHECK(addr);
+				spy_push_int(spy, *(spy_int *)&spy->memory[addr]);
 				break;
+			}
 
 			/* BDER */
-			case 0x29:
-				spy_push_byte(spy, spy->memory[spy_pop_int(spy)]);
+			case 0x29: {
+				spy_int addr = spy_pop_int(spy);
+				BOUNDS_CHECK(addr);
+				spy_push_byte(spy, spy->memory[addr]);
 				break;
+			}
 
 			/* ISAVE */
 			case 0x2A: {
 				spy_int value = spy_pop_int(spy);
 				spy_int addr = spy_pop_int(spy);
+				BOUNDS_CHECK(addr);
 				spy_save_int(spy, addr, value);	
 				break;
 			}
@@ -659,6 +668,7 @@ spy_execute(const char* filename) {
 			case 0x2B: {
 				spy_byte value = spy_pop_byte(spy);
 				spy_int addr = spy_pop_int(spy);
+				BOUNDS_CHECK(addr);
 				spy_save_byte(spy, addr, value);
 				break;
 			}
@@ -700,6 +710,7 @@ spy_execute(const char* filename) {
 			case 0x32: {
 				spy_int value = spy_pop_int(spy);
 				spy_int addr = spy_code_int64();
+				BOUNDS_CHECK(addr);
 				spy_save_int(spy, addr, value);	
 				break;
 			}
@@ -708,19 +719,26 @@ spy_execute(const char* filename) {
 			case 0x33: {	
 				spy_byte value = spy_pop_byte(spy);
 				spy_int addr = spy_code_int64();
+				BOUNDS_CHECK(addr);
 				spy_save_byte(spy, addr, value);
 				break;
 			}
 
 			/* AIDER */
-			case 0x34: 
-				spy_push_int(spy, spy_mem_int(spy, spy_code_int64()));
+			case 0x34:  {
+				spy_int addr = spy_code_int64();
+				BOUNDS_CHECK(addr);
+				spy_push_int(spy, spy_mem_int(spy, addr));
 				break;
+			}
 
 			/* ABDER */
-			case 0x35:
-				spy_push_byte(spy, spy_mem_int(spy, spy_code_int64()));
+			case 0x35: {
+				spy_int addr = spy_code_int64();
+				BOUNDS_CHECK(addr);
+				spy_push_byte(spy, spy_mem_int(spy, addr));
 				break;
+			}
 			
 			/* MALLOC */
 			case 0x36: 

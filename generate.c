@@ -318,6 +318,10 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	if (parent && parent->type == EXP_UNARY && parent->uval->optype == '@') {
 		dont_der = 1;
 	}
+	if (parent && parent->type == EXP_BINARY && IS_ASSIGN(parent->bval) &&
+		exp->side == LEAF_LEFT && exp->type == EXP_UNARY && exp->uval->optype == '$'){
+		dont_der = 1;
+	}
 	switch (exp->type) {
 		case EXP_INTEGER:
 			writer(C, "iconst %lld\n", exp->ival);
@@ -455,7 +459,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				if (!is_top) {
 					writer(C, "dup\n");
 				}
-				writer(C, "%csave\n", get_prefix(lhs->eval)); 
+				writer(C, "%csave\n", get_prefix_b(lhs->eval)); 
 			} else if (IS_ASSIGN(exp->bval)) {
 				char lp = get_prefix_b(lhs->eval);
 				generate_expression(C, lhs);
@@ -542,8 +546,14 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					case SPEC_EQ:
 					case SPEC_NEQ: {
 						char op = exp->bval->optype;
-						/* ins is inverted! */
 						const char* ins = (
+							op == '>' ? "gt" :
+							op == '<' ? "lt" :
+							op == SPEC_GE ? "ge" :
+							op == SPEC_LE ? "le" :
+							op == SPEC_EQ ? "e" : "ne"	
+						);	
+						const char* inverted = (
 							op == '>' ? "le" :
 							op == '<' ? "ge" :
 							op == SPEC_GE ? "lt" :
@@ -554,10 +564,14 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						if (C->cond_jmp && is_top) {
 							/* if it's a conditional expression and the cond operator is at
 							 * the top of the tree, a simple conditional jump can be generated */
-							writer(C, "j%s " FORMAT_LABEL, ins, C->bottom_label);
+							writer(C, "j%s " FORMAT_LABEL, inverted, C->bottom_label);
 						} else {
-							writer(C, "p%s\n", ins);
-							writer(C, "%ctest", prefix); 
+							if (C->cond_jmp) {
+								writer(C, "p%s\n", inverted);
+								writer(C, "%ctest", prefix); 
+							} else {
+								writer(C, "p%s", ins);
+							}
 						}
 						break;
 					}

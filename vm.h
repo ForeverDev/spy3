@@ -8,6 +8,9 @@
 #define SIZE_STACK  0x010000
 #define SIZE_CODE	0x010000
 
+#define START_STACK  SIZE_CODE
+#define START_MEMORY (SIZE_STACK + SIZE_CODE)
+
 #define FLAG_EQ		(0x1 << 0) /* NEQ = !EQ */
 #define FLAG_GT		(0x1 << 1) /* GE = !LT */
 #define FLAG_LT		(0x1 << 2) /* LE = !GT */
@@ -80,6 +83,7 @@ extern const SpyInstruction spy_instructions[255];
 void spy_init();
 void spy_execute(const char*);
 void spy_dump();
+void spy_die(const char*, ...);
 const SpyInstruction* spy_get_instruction(const char*); /* for the assembler... */
 
 #endif

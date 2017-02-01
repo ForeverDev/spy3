@@ -1,8 +1,16 @@
 /* cfunc declarations.... TODO put these in an include */
-print:   foreign (format: ^byte, ...) -> void;
-alloc:   foreign (bytes: int) -> ^byte;
-delete:  foreign (ptr: ^byte) -> void;
-quit:    foreign (code: int) -> void;
+print:       foreign (format: ^byte, ...) -> void;
+alloc:       foreign (bytes: int) -> ^byte;
+delete:      foreign (ptr: ^byte) -> void;
+quit:        foreign (code: int) -> void;
+read_int:    foreign (ptr: ^int) -> int;
+read_float:  foreign (ptr: ^float) -> int;
+read_string: foreign (ptr: ^byte, size: int) -> ^byte;
+
+struct NameContainer {
+	first: ^byte;
+	last:  ^byte;
+};
 
 /* returns 1 if n is prime, 0 if not */
 is_prime: (n: int) -> int {
@@ -19,15 +27,90 @@ is_prime: (n: int) -> int {
 	return 1;
 }
 
-main: () -> void {
+strlen: (str: ^byte) -> int {
 	
+	len: int;
+
+	len = 0;
+	
+	while ($str) {
+		str += 1;
+		len += 1;
+	}
+
+	return len;
+
+}
+
+strneq: (a: ^byte, b: ^byte, length: int) -> int {
+	
+	while (length > 0) {
+		if ($a != $b)
+			return 0;
+		if (!$a)
+			return 1;	
+		a += 1;
+		b += 1;
+		length -= 1;
+	}
+
+	return 1;
+
+}
+
+streq: (a: ^byte, b: ^byte) -> int {
+
+	while ($a == $b) {
+		if (!$a)
+			return 1;
+		a += 1;
+		b += 1;
+	}
+
+	return 0;
+		
+}
+
+strfind: (source: ^byte, target: ^byte) -> ^byte {
+
+	index: int;
+	len_source: int;
+	len_target: int;
+
+	len_source = strlen(source);
+	len_target = strlen(target);
+
+	if (len_target > len_source)
+		return 0;
+
+	for (index = 0; index < len_source; index += 1)
+		if (strneq(@source[index], target, len_target))
+			return @source[index];
+
+	return 0;
+}
+
+
+/* ---------- beginning of driver functions ---------- */
+
+do_primes: () -> void {
+
 	array: ^int;
 	i: int;
-	num_primes: int;
 	primes_found: int;
+	num_primes: int;
+
+	print("\n\n\n--- PRIMES STAGE ---\n");
 	
-	num_primes = 500;
+	print("how many primes do you want to find?\n");
+	while (1) {
+		if (read_int(@num_primes))
+			break;
+		print("invalid number...\n");
+	}
 	primes_found = 0;
+
+	print("finding %d primes...\n", num_primes);
 	
 	/* allocate space for the array and ensure it was allocated properly */	
 	array = #^int alloc(num_primes * sizeof int);	
@@ -52,6 +135,80 @@ main: () -> void {
 
 	/* cleanup */
 	delete(#^byte array);
+	
+}
+
+do_pointers: () -> void {
+
+	dangling: [2]^byte;
+	active:   [2]^byte;
+	size:     int;
+	i:		  int;
+
+	print("\n\n\n--- POINTER STAGE ---\n");
+
+	size = 20;
+	
+	/* create dangling pointers */
+	for (i = 0; i < 2; i += 1) {
+		dangling[i] = alloc(size);
+		delete(dangling[i]);
+	}
+
+	/* create active pointers */
+	for (i = 0; i < 2; i += 1)
+		active[i] = alloc(size);
+	
+	print("dangling: 0x%xi, 0x%xi, %d\n", dangling[0], dangling[1], dangling[0] == dangling[1]);
+	print("active:   0x%xi, 0x%xi, %d\n", active[0], active[1], active[0] == active[1]);
+
+	/* cleanup active pointers */
+	for (i = 0; i < 2; i += 1)
+		delete(active[i]);
+
+}
+
+do_string: () -> void {
+	
+	name:    NameContainer;	
+	buf:     ^byte;	
+	max:     int;
+	err_msg: ^byte;
+
+	print("\n\n\n--- STRING STAGE ---\n");
+
+	err_msg = "invalid name input, try again.\n";
+	max = 500;
+	
+	buf = alloc(max);
+	print("what is your name? (first and last)\n");	
+	while (1) {
+		read_string(buf, max);
+		name.first = @buf[0]; /* could also just set equal to buf... */
+		name.last = strfind(name.first, " ");
+		if (name.last) {
+			$name.last = 0;
+			name.last += 1;
+			if (strfind(name.last, " ")) {
+				print(err_msg);
+				continue;
+			}
+			break;
+		}
+		print(err_msg);
+	}
+	print("first name: %s\nlast name: %s\n", name.first, name.last);
+
+	/* note that the buffer that should be freed is still pointed to by buf */
+	delete(buf);
+
+}
+
+main: () -> void {
+	
+	do_string();
+	do_primes();
+	do_pointers();
 
 }
 

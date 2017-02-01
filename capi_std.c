@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include "capi_std.h"
 #include "vm.h"
 #include "spylib.h"
@@ -66,6 +67,27 @@ std_alloc(SpyState* spy) {
 
 static spy_int
 std_delete(SpyState* spy) {
+	spy_int addr = spy_pop_int(spy);
+	for (MemoryBlockList* i = spy->memory_map; i; i = i->next) {
+		if (i->block->addr == addr) {
+			if (i->prev) {
+				if (i->next) {
+					i->next->prev = i->prev;
+				}
+				i->prev->next = i->next;
+			} else {
+				if (i->next) {
+					spy->memory_map = i->next;
+					spy->memory_map->prev = NULL;
+				} else {
+					spy->memory_map = NULL;
+				}
+			}
+			free(i);
+			return 0;
+		}
+	}
+	spy_die("attempt to free an invalid pointer");
 	return 0;	
 }
 

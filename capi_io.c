@@ -164,9 +164,58 @@ io_fread(SpyState* spy) {
 }
 
 static spy_int
-io_scan(SpyState* spy) {
-	spy_string format = spy_gets(spy, spy_pop_int(spy));
+io_flush(SpyState* spy) {
+	char c;
+	while ((c = getchar()) != '\n' && c != EOF);
 	return 0;
+}
+
+static spy_int
+io_read_int(SpyState* spy) {
+	/* TODO make work properly */
+	//spy_string format = spy_gets(spy, spy_pop_int(spy));
+	spy_int ptr = spy_pop_int(spy);
+	int check = scanf("%lld", (spy_int *)&spy->memory[ptr]);
+	if (check != 1) {
+		*(spy_int *)&spy->memory[ptr] = 0;
+		spy_push_int(spy, 0);
+	} else {
+		spy_push_int(spy, 1);
+	}
+	io_flush(spy);
+	return 1;
+}
+
+static spy_int
+io_read_float(SpyState* spy) {
+	spy_int ptr = spy_pop_int(spy);
+	int check = scanf("%lf", (spy_float *)&spy->memory[ptr]);
+	if (check != 1) {
+		*(spy_float *)&spy->memory[ptr] = 0.0;
+		spy_push_int(spy, 0);
+	} else {
+		spy_push_int(spy, 1);	
+	}
+	io_flush(spy);
+	return 1;
+}
+
+static spy_int
+io_read_string(SpyState* spy) {
+	spy_int ptr = spy_pop_int(spy);
+	spy_int size = spy_pop_int(spy);
+	char* str = (char *)&spy->memory[ptr];
+	if (fgets(str, size, stdin)) {
+		/* strip newline at end if needed */
+		size_t slen = strlen(str) - 1;
+		if (*str && str[slen] == '\n') {
+			str[slen] = 0;
+		}
+		spy_push_int(spy, ptr);
+	} else {
+		spy_push_int(spy, 0);
+	}
+	return 1;
 }
 
 SpyCFunc capi_io[] = {
@@ -180,6 +229,9 @@ SpyCFunc capi_io[] = {
 	{"fputc", io_fputc},
 	{"fputs", io_fputs},
 	{"fread", io_fread},
-	{"scan", io_scan},
+	{"read_int", io_read_int},
+	{"read_float", io_read_float},
+	{"read_string", io_read_string},
+	{"flush", io_flush},
 	{NULL, NULL}
 };
