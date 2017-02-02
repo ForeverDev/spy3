@@ -29,6 +29,10 @@ fibonacci: (n: int) -> int {
 	return fibonacci(n - 1) + fibonacci(n - 2);
 }
 
+square: (n: int) -> int {
+	return n * n;
+}
+
 /* returns 1 if n is prime, 0 if not */
 is_prime: (n: int) -> int {
 	
@@ -294,7 +298,7 @@ do_sorting: () -> void {
 
 do_function_pointer: () -> void {
 
-	desc:     [2]FunctionDescriptor;
+	desc:     [3]FunctionDescriptor;
 	pick:     ^FunctionDescriptor;
 	index:    int;
 	argument: int;
@@ -307,17 +311,20 @@ do_function_pointer: () -> void {
 
 	desc[1].ptr = fibonacci;
 	desc[1].name = "fibonacci";
+
+	desc[2].ptr = square;
+	desc[2].name = "square";
 	
 	/* present user with choices... */
 	print("which function would you like to execute?\n");
-	for (i = 0; i < 2; i += 1) {
+	for (i = 0; i < 3; i += 1) {
 		print("\t%d. %s\n", i + 1, desc[i].name);
 	}
 	
 	/* get the index to use */
 	while (1) {
 		read_proper_int(@index);
-		if (index == 1 || index == 2) {
+		if (index >= 1 && index <= 3) {
 			break;
 		}
 		print("that isn't a valid function index, try again.\n");
