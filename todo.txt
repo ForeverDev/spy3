@@ -1,0 +1,7 @@
+- file includes
+- typechecking arguments
+- complete tree folding for floats
+	- also make tree folding with implicit casts, e.g. (10.5 + 13) -> (23.5) 
+- short circut || and && (will this even be possible...?)
+- optimize instructions that don't do anything (e.g. res 0, iinc 0, etc.)
+- implement do until block

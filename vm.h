@@ -17,6 +17,8 @@
 #define FLAG_Z		(0x1 << 3) /* NZ = !Z */
 #define FLAG_S		(0x1 << 4) /* NS = !S */
 
+#define DO_OPTIMIZE 1
+
 #define MALLOC_CHUNK 8 /* must be multiple of 8 */
 
 /* NOTES

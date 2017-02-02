@@ -874,6 +874,7 @@ register_local(ParseState* P, VarDeclaration* local) {
 	if (P->append_target) {
 		parse_die(P, "variables can only be declared in a block");
 	}
+	/* TODO check for redeclaration */
 	TreeBlock* block = P->current_block->blockval;
 	VarDeclarationList* new = malloc(sizeof(VarDeclarationList));
 	new->decl = local;
@@ -890,10 +891,7 @@ register_local(ParseState* P, VarDeclaration* local) {
 }
 
 static int
-types_match(const Datatype* a, const Datatype* b) {
-	if ((IS_INT(a) && IS_PTR(b)) || (IS_INT(b) && IS_PTR(a))) {
-		return 1;
-	}
+types_match_strict(const Datatype* a, const Datatype* b) {
 	if (a->type != b->type) {
 		return 0;
 	}
@@ -925,6 +923,36 @@ types_match(const Datatype* a, const Datatype* b) {
 	return 1;
 }
 
+static int
+types_match(const Datatype* a, const Datatype* b) {
+	if ((IS_INT(a) && IS_PTR(b)) || (IS_INT(b) && IS_PTR(a))) {
+		return 1;
+	}
+	return types_match_strict(a, b);
+}
+
+/* helper function for typecheck_expression */
+static void
+check_function_arg(ParseState* P, Datatype* expected, const Datatype* check, int arg_index, const char* func_id) {
+	if (!types_match_strict(expected, check)) {
+		if (func_id) {
+			parse_die(P,
+				"argument #%d to function '%s' should evaluate to (%s), got (%s)",
+				arg_index,
+				func_id,
+				tostring_datatype(expected),
+				tostring_datatype(check)
+			);	
+		} else {
+			parse_die(P,
+				"argument #%d should evaluate to (%s), got (%s)",
+				arg_index,
+				tostring_datatype(expected),
+				tostring_datatype(check)
+			);	
+		}
+	}
+}
 
 static const Datatype*
 typecheck_expression(ParseState* P, ExpNode* exp) {
@@ -1082,6 +1110,41 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 						call->nargs
 					);
 				}
+			}
+
+			/* typecheck each argument */
+			if (call->nargs > 0) {
+				ExpNode* farthest_comma = NULL;
+				arg = call->arguments;
+				if (IS_BIN_OP(arg, ',')) {
+					farthest_comma = arg;
+				}
+				while (farthest_comma) {
+					ExpNode* lft = farthest_comma->bval->left;
+					if (lft && IS_BIN_OP(lft, ',')) {
+						farthest_comma = lft;
+					} else {
+						break;
+					}
+				}
+				ExpNode* checking = farthest_comma ? farthest_comma->bval->left : arg;
+				VarDeclarationList* cur_arg = desc->arguments;
+				for (int i = 0; i < desc->nargs; i++) {
+					check_function_arg(P, cur_arg->decl->datatype, checking->eval, i + 1, func_id);		
+					cur_arg = cur_arg->next;
+					if (!checking->parent) {
+						break;
+					}
+					if (i == 0) {
+						checking = checking->parent->bval->right;
+					} else {
+						if (!checking->parent->parent) {
+							break;
+						}
+						checking = checking->parent->parent->bval->right;
+					}
+				}
+				
 			}
 
 			return exp->eval = desc->return_type;

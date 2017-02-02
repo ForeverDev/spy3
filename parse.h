@@ -16,7 +16,9 @@
 #define IS_FLOAT(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_FLOAT)
 #define IS_BYTE(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_BYTE)
 #define IS_STRING(d) (d->ptr_dim == 1 && d->array_dim == 0 && d->type == DATA_BYTE)
+#define IS_FUNC_PTR(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_FPTR)
 #define IS_CT_CONSTANT(e) (e->type == EXP_INTEGER)
+#define IS_BIN_OP(e, op) ((e)->type == EXP_BINARY && (e)->bval->optype == (op))
 
 /* t is a bval node */
 #define IS_ASSIGN(t) ((t)->optype == '=' || \

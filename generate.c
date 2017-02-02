@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "generate.h"
+#include "vm.h"
 
 #define FORMAT_LABEL ".L%d"
 #define FORMAT_STATIC ".S%d"
@@ -445,7 +446,9 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					 * instead of finding the struct from its identifier */
 					field = get_field(lhs->eval->sdesc, rhs->sval);
 				}
-				writer(C, "iinc %d\n", field->offset);	
+				if (DO_OPTIMIZE && field->offset > 0) {
+					writer(C, "iinc %d\n", field->offset);	
+				}
 				if (!dont_der) {
 					writer(C, "%cder\n", get_prefix_b(exp->eval));	
 				}
@@ -707,7 +710,9 @@ generate_function(CompileState* C) {
 	for (VarDeclarationList* i = desc->arguments; i; i = i->next) {
 		writeb(C, "%carg %d\n", get_prefix(i->decl->datatype), index++);
 	}
-	writeb(C, "res %d\n", desc->stack_space);
+	if (DO_OPTIMIZE && desc->stack_space > 0) {
+		writeb(C, "res %d\n", desc->stack_space);
+	}
 	pushb(C, FORMAT_DEF_LABEL, C->return_label);
 	const Datatype* ret = desc->return_type;
 	if (ret->type == DATA_VOID) {
