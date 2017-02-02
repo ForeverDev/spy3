@@ -12,6 +12,23 @@ struct NameContainer {
 	last:  ^byte;
 };
 
+struct FunctionDescriptor {
+	name:  ^byte;
+	ptr:   (arg: int) -> int;
+};
+
+factorial: (n: int) -> int {
+	if (n <= 1)
+		return 1;
+	return n * factorial(n - 1);	
+};
+
+fibonacci: (n: int) -> int {
+	if (n <= 2)
+		return 1;
+	return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
 /* returns 1 if n is prime, 0 if not */
 is_prime: (n: int) -> int {
 	
@@ -275,12 +292,54 @@ do_sorting: () -> void {
 		
 }
 
+do_function_pointer: () -> void {
+
+	desc:     [2]FunctionDescriptor;
+	pick:     ^FunctionDescriptor;
+	index:    int;
+	argument: int;
+	i:		  int;
+
+	print("\n\n\n--- FUNCTION POINTER STAGE ---\n");
+
+	desc[0].ptr = factorial;
+	desc[0].name = "factorial";
+
+	desc[1].ptr = fibonacci;
+	desc[1].name = "fibonacci";
+	
+	/* present user with choices... */
+	print("which function would you like to execute?\n");
+	for (i = 0; i < 2; i += 1) {
+		print("\t%d. %s\n", i + 1, desc[i].name);
+	}
+	
+	/* get the index to use */
+	while (1) {
+		read_proper_int(@index);
+		if (index == 1 || index == 2) {
+			break;
+		}
+		print("that isn't a valid function index, try again.\n");
+	}
+	pick = @desc[index - 1];
+	
+	/* execute via function pointer */
+	print("argument to that function? ");
+	read_proper_int(@argument);
+	print("%s(%d) = %d\n", pick.name, argument, pick.ptr(argument));
+	
+}
+
 main: () -> void {
 	
 	do_string();
 	do_primes();
 	do_pointers();
 	do_sorting();
+	do_function_pointer();
+
+	print("\n\n");
 
 }
 

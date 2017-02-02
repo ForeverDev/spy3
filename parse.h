@@ -11,7 +11,7 @@
 
 #define IS_PTR(d) (d->ptr_dim > 0)
 #define IS_ARRAY(d) (d->array_dim > 0)
-#define IS_STRUCT(d) (d->sdesc != NULL)
+#define IS_STRUCT(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->sdesc != NULL)
 #define IS_INT(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_INT)
 #define IS_FLOAT(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_FLOAT)
 #define IS_BYTE(d) (d->ptr_dim == 0 && d->array_dim == 0 && d->type == DATA_BYTE)

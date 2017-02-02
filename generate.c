@@ -299,12 +299,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 	} else {
 		is_assign = 0;
 	}
-	int dont_der = (
-		parent &&
-		parent->type == EXP_BINARY &&
-		IS_ASSIGN(parent->bval) &&
-		exp->side == LEAF_LEFT
-	);
+	int dont_der = is_assign && exp->side == LEAF_LEFT;
 	/* don't dereference dot chain on left side of assignment operator */
 	if (parent && parent->type == EXP_BINARY && parent->bval->optype == '.' && exp->side == LEAF_LEFT) {
 		ExpNode* scan = parent;
@@ -355,7 +350,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
 			} else if (d->type == DATA_FPTR && d->mods & MOD_FOREIGN) {
 				writer(C, "iconst " FORMAT_FUNC "\n", var->name);
-			} else if ((dont_der && d->type != DATA_STRUCT) || d->array_dim > 0) {
+			} else if ((dont_der && !IS_STRUCT(d)) || d->array_dim > 0) {
 				/* structs are pointers, use locall */
 				writer(C, "lea %d\n", var->offset);
 			} else {
@@ -410,7 +405,8 @@ generate_expression(CompileState* C, ExpNode* exp) {
 			writer(C, "iconst %d\n", exp->eval->size);
 			writer(C, "imul\n");
 			writer(C, "iadd\n");
-			if (!dont_der) {
+			/* struct just exists on the stack, don't dereference */
+			if (!dont_der && !IS_STRUCT(exp->eval)) {
 				writer(C, "ider\n");
 			}
 			break;
@@ -790,7 +786,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	}
 	
 	do {
-		writeb(&C, "; line %d\n", C.focus->line);
+		writeb(&C, "; @%d\n", C.focus->line);
 		switch (C.focus->type) {
 			case NODE_IF:
 				generate_if(&C);

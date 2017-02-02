@@ -42,3 +42,23 @@ ARGUMENTS:
 	(max_length: int) this is the maximum number of characters that will be read from the standard input
 RETURN VALUE:
 	If successful, a pointer to the buffer will be returned.  If not successfull, null will be returned.
+
+
+--> fputc: (handle: file, character: byte) -> void;
+DESCRIPTION:
+	Writes a single character, (character), to the file described by (handle)
+ARGUMENTS:
+	(handle: file) a file handle that will be written to 
+	(character: byte) the character that will be written to the file
+RETURN VALUE:
+	nothing
+
+
+--> fputs: (handle: file, string: ^byte) -> void;
+DESCRIPTION:
+	Writes an entire string to the given file
+ARGUMENTS:
+	(handle: file) a file handle that will be written to 
+	(string: ^byte) the string that will be written to the file
+RETURN VALUE:
+	nothing
