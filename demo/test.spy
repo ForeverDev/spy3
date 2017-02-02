@@ -17,14 +17,36 @@ is_prime: (n: int) -> int {
 	
 	i: int;
 
-	if (n % 2 == 0)
+	if (n % 2 == 0) {
 		return 0;
+	}
 		
-	for (i = 3; i*i <= n; i += 2)
-		if (n % i == 0)
+	for (i = 3; i*i <= n; i += 2) {
+		if (n % i == 0) {
 			return 0;
+		}
+	}
 	
 	return 1;
+}
+
+/* calls read_int until proper input is given */
+read_proper_int: (target: ^int) -> void {
+	while (!read_int(target)) {
+		print("invalid integer input, try again.\n");
+	}
+}
+
+safe_alloc: (bytes: int) -> ^byte {
+	chunk: ^byte;
+
+	chunk = alloc(bytes);
+	if (!chunk) {
+		print("!!! out of memory, abort !!!\n");
+		quit(1);
+	}
+
+	return chunk;
 }
 
 strlen: (str: ^byte) -> int {
@@ -45,10 +67,12 @@ strlen: (str: ^byte) -> int {
 strneq: (a: ^byte, b: ^byte, length: int) -> int {
 	
 	while (length > 0) {
-		if ($a != $b)
+		if ($a != $b) {
 			return 0;
-		if (!$a)
+		}
+		if (!$a) {
 			return 1;	
+		}
 		a += 1;
 		b += 1;
 		length -= 1;
@@ -61,8 +85,9 @@ strneq: (a: ^byte, b: ^byte, length: int) -> int {
 streq: (a: ^byte, b: ^byte) -> int {
 
 	while ($a == $b) {
-		if (!$a)
+		if (!$a) {
 			return 1;
+		}
 		a += 1;
 		b += 1;
 	}
@@ -80,16 +105,18 @@ strfind: (source: ^byte, target: ^byte) -> ^byte {
 	len_source = strlen(source);
 	len_target = strlen(target);
 
-	if (len_target > len_source)
+	if (len_target > len_source) {
 		return 0;
+	}
 
-	for (index = 0; index < len_source; index += 1)
-		if (strneq(@source[index], target, len_target))
+	for (index = 0; index < len_source; index += 1) {
+		if (strneq(@source[index], target, len_target)) {
 			return @source[index];
+		}
+	}
 
 	return 0;
 }
-
 
 /* ---------- beginning of driver functions ---------- */
 
@@ -103,21 +130,13 @@ do_primes: () -> void {
 	print("\n\n\n--- PRIMES STAGE ---\n");
 	
 	print("how many primes do you want to find?\n");
-	while (1) {
-		if (read_int(@num_primes))
-			break;
-		print("invalid number...\n");
-	}
+	read_proper_int(@num_primes);
 	primes_found = 0;
 
 	print("finding %d primes...\n", num_primes);
 	
 	/* allocate space for the array and ensure it was allocated properly */	
-	array = #^int alloc(num_primes * sizeof int);	
-	if (!array) {
-		print("couldn't allocate space for an array containing %d integers\n", num_primes);
-		quit(1);
-	}
+	array = #^int safe_alloc(num_primes * sizeof int);	
 	
 	/* stick the primes in an array */
 	i = 2;
@@ -130,8 +149,9 @@ do_primes: () -> void {
 	}	
 
 	/* print the primes */
-	for (i = 0; i < num_primes; i += 1) 
+	for (i = 0; i < num_primes; i += 1) {
 		print("prime #%d = %d\n", i + 1, array[i]);
+	}
 
 	/* cleanup */
 	delete(#^byte array);
@@ -151,20 +171,22 @@ do_pointers: () -> void {
 	
 	/* create dangling pointers */
 	for (i = 0; i < 2; i += 1) {
-		dangling[i] = alloc(size);
+		dangling[i] = safe_alloc(size);
 		delete(dangling[i]);
 	}
 
 	/* create active pointers */
-	for (i = 0; i < 2; i += 1)
-		active[i] = alloc(size);
+	for (i = 0; i < 2; i += 1) {
+		active[i] = safe_alloc(size);
+	}
 	
 	print("dangling: 0x%xi, 0x%xi, %d\n", dangling[0], dangling[1], dangling[0] == dangling[1]);
 	print("active:   0x%xi, 0x%xi, %d\n", active[0], active[1], active[0] == active[1]);
 
 	/* cleanup active pointers */
-	for (i = 0; i < 2; i += 1)
+	for (i = 0; i < 2; i += 1) {
 		delete(active[i]);
+	}
 
 }
 
@@ -180,7 +202,7 @@ do_string: () -> void {
 	err_msg = "invalid name input, try again.\n";
 	max = 500;
 	
-	buf = alloc(max);
+	buf = safe_alloc(max);
 	print("what is your name? (first and last)\n");	
 	while (1) {
 		read_string(buf, max);
@@ -204,11 +226,61 @@ do_string: () -> void {
 
 }
 
+do_sorting: () -> void {
+	
+	i:     int;
+	j:     int;
+	size:  int;
+	start: int;
+	temp:  int;
+	array: ^int;
+
+	print("\n\n\n--- SORTING STAGE ---\n");
+	print("size of array? ");
+	read_proper_int(@size);
+	print("now enter %d integers and they will be sorted.\n", size);
+
+	array = #^int safe_alloc(size * sizeof int);
+	
+	/* populate the array with input */
+	for (i = 0; i < size; i += 1) {
+		print("integer #%d: ", i + 1);
+		read_proper_int(@array[i]);
+	}
+
+	/* selection sort */
+	for (i = size - 1; i > 0; i -= 1) {
+		start = 0;
+		for (j = 1; j <= i; j += 1) {
+			if (array[j] > array[start]) {
+				start = j;
+			}
+		}
+		temp = array[i];
+		array[i] = array[start];
+		array[start] = temp;
+	}
+	
+	/* print sorted array */
+	print("\nsorted array:\n");
+	for (i = 0; i < size; i += 1) {
+		print("%d", array[i]);
+		if (i != size - 1) {
+			print(", ");
+		}
+	}
+	print("\n");
+
+	delete(#^byte array);
+		
+}
+
 main: () -> void {
 	
 	do_string();
 	do_primes();
 	do_pointers();
+	do_sorting();
 
 }
 

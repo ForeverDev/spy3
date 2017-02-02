@@ -891,6 +891,9 @@ register_local(ParseState* P, VarDeclaration* local) {
 
 static int
 types_match(const Datatype* a, const Datatype* b) {
+	if ((IS_INT(a) && IS_PTR(b)) || (IS_INT(b) && IS_PTR(a))) {
+		return 1;
+	}
 	if (a->type != b->type) {
 		return 0;
 	}
@@ -1527,6 +1530,12 @@ fold_expression(ParseState* P, ExpNode* exp) {
 					case SPEC_LE:
 						result = l <= r;
 						break;
+					case SPEC_LOG_AND:
+						result = l && r;
+						break;
+					case SPEC_LOG_OR:
+						result = l || r;
+						break;
 				}
 				/* cleanup children that are not needed anymore */
 				free(exp->bval);
@@ -1595,11 +1604,22 @@ parse_return(ParseState* P) {
 	TreeNode* node = empty_node(P);
 	node->type = NODE_RETURN;
 	node->stateval = malloc(sizeof(TreeStatement));
+
+	TreeFunction* func = P->current_function->funcval;
+	Datatype* expected_type = func->desc->fdesc->return_type;
 	
 	safe_eat(P);
 	mark_operator(P, SPEC_NULL, ';');
 	node->stateval->exp = parse_expression(P);
 	typecheck_expression(P, node->stateval->exp);
+	if (!types_match(node->stateval->exp->eval, expected_type)) {
+		parse_die(P, 
+			"function '%s' should return expression of type (%s), got type (%s)",
+			func->name,
+			tostring_datatype(expected_type),
+			tostring_datatype(node->stateval->exp->eval)
+		);
+	}
 	fold_expression(P, node->stateval->exp);
 	safe_eat(P); /* skip ; */
 

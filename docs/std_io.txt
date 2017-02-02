@@ -1,0 +1,44 @@
+---> print: (format: ^byte, ...) -> int;
+DESCRIPTION:
+	Writes a formatted string to the standard output.
+ARGUMENTS:
+	(format: ^byte) a string specification format.
+	(...) the values that correspond to the format
+RETURN VALUE:
+	An integer representing the number of characters that were printed to the standard output.
+FORMAT SPECIFIERS:
+	%d: integer
+	%f: float
+	%b: byte
+	%c: character
+	%s: string
+	%xi: hexadecimal integer
+	%xb: hexadecimal byte
+
+
+---> read_int: (ptr: ^int) -> int;
+DESCRIPTION:
+	Reads an integer from the standard input.
+ARGUMENTS:
+	(ptr: ^int) this is where the integer that is read will be stored
+RETURN VALUE:
+	an integer that describes if an integer was properly read.  1 if success, 0 if fail
+
+
+--> read_float: (ptr: ^float) -> int;
+DESCRIPTION:
+	Reads a float from the standard input.
+ARGUMENTS:
+	(ptr: ^float) this is where the float that is read will be stored
+RETURN VALUE:
+	an integer that describes if an integer was properly read.  1 if success, 0 if fail
+
+
+--> read_string: (buffer: ^byte, max_length: int) -> ^byte;
+DESCRIPTION:
+	Reads a string from the standard input into (buffer)
+ARGUMENTS:
+	(buffer: ^byte) this is where the string will be stored
+	(max_length: int) this is the maximum number of characters that will be read from the standard input
+RETURN VALUE:
+	If successful, a pointer to the buffer will be returned.  If not successfull, null will be returned.

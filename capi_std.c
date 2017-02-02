@@ -13,6 +13,11 @@ std_quit(SpyState* spy) {
 static spy_int
 std_alloc(SpyState* spy) {
 	spy_int requested_bytes = spy_pop_int(spy);
+	if (requested_bytes < 0) {
+		spy_push_int(spy, 0);
+		return 1;
+	}
+	requested_bytes += MALLOC_CHUNK; /* for case when requested_bytes == 0 */
 	MemoryBlockList* new_list = malloc(sizeof(MemoryBlockList));
 	new_list->next = NULL;
 	new_list->prev = NULL;

@@ -103,6 +103,8 @@ const SpyInstruction spy_instructions[255] = {
 	{"mod", 0x5A, {OP_NONE}},				/* [int a, int b] -> [int result] */
 	{"ccfcall", 0x5B, {OP_INT64}},			/* [char* name] -> [int ip_save, int bp_save, int nargs] */
 	{"not", 0x5C, {OP_NONE}},				/* [int value] -> [int !value] */
+	{"land", 0x5D, {OP_NONE}},				/* [int a, int b] -> [int a && b] */
+	{"lor", 0x5E, {OP_NONE}},				/* [int a, int b] -> [int a || b] */
 
 	/* debuggers */
 	{"ilog", 0xFD, {OP_NONE}},				
@@ -978,6 +980,16 @@ spy_execute(const char* filename) {
 			/* NOT */
 			case 0x5C:
 				spy_push_int(spy, !spy_pop_int(spy));
+				break;
+			
+			/* LAND */
+			case 0x5D:
+				INTARITH(&&);
+				break;
+
+			/* LOR */
+			case 0x5E:
+				INTARITH(||);
 				break;
 
 			/* ILOG */
