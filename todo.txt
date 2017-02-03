@@ -5,3 +5,5 @@
 - short circut || and && (will this even be possible...?)
 - optimize instructions that don't do anything (e.g. res 0, iinc 0, etc.)
 - implement do until block
+- expressions that have a result that isn't stored anywhere must be popped off of the stack
+

@@ -34,6 +34,7 @@ struct CompileState {
 	unsigned int bottom_label;
 	int exp_push; /* which writer function for generate_expression to use */
 	int cond_jmp; /* if 1, generate_expression will jump to bottom_label with a top-level comparison */
+	int gen_do;
 	FILE* handle;
 };
 
@@ -59,6 +60,7 @@ static void generate_condition(CompileState*, ExpNode*);
 static void generate_continue(CompileState*);
 static void generate_break(CompileState*);
 static void generate_return(CompileState*);
+static void generate_do(CompileState*);
 static void initialize_local(CompileState*, VarDeclaration*);
 
 /* misc function */
@@ -223,6 +225,8 @@ get_child(TreeNode* node) {
 			return node->ifval->child;
 		case NODE_WHILE:
 			return node->whileval->child;
+		case NODE_DO:
+			return node->doval->child;
 		case NODE_FOR:
 			return node->forval->child;
 		case NODE_FUNC_IMPL:
@@ -563,10 +567,10 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						if (C->cond_jmp && is_top) {
 							/* if it's a conditional expression and the cond operator is at
 							 * the top of the tree, a simple conditional jump can be generated */
-							writer(C, "j%s " FORMAT_LABEL, inverted, C->bottom_label);
+							writer(C, "j%s " FORMAT_LABEL, C->gen_do ? ins : inverted, C->bottom_label);
 						} else {
 							if (C->cond_jmp) {
-								writer(C, "p%s\n", inverted);
+								writer(C, "p%s\n", C->gen_do ? ins : inverted);
 								writer(C, "%ctest", prefix); 
 							} else {
 								writer(C, "p%s", ins);
@@ -636,6 +640,26 @@ generate_while(CompileState* C) {
 	);
 	writeb(C, FORMAT_DEF_LABEL, C->cont_label);
 	generate_condition(C, C->focus->whileval->condition);
+	pushb(C, "jmp " FORMAT_LABEL "\n", C->cont_label);
+	pushb(C, FORMAT_DEF_LABEL, C->break_label);
+}
+
+static void
+generate_do(CompileState* C) {
+	C->cont_label = C->label_count++;
+	C->bottom_label = C->break_label = C->label_count++;
+	unsigned int skip_label = C->label_count++;
+	writeb(C, 
+		"; do/while loop\n;\ttop: " FORMAT_LABEL "\n;\tbot: " FORMAT_LABEL "\n",
+		C->cont_label,
+		C->bottom_label
+	);
+	writeb(C, "jmp " FORMAT_LABEL "\n", skip_label);
+	writeb(C, FORMAT_DEF_LABEL, C->cont_label);
+	C->gen_do = 1;
+	generate_condition(C, C->focus->doval->condition);
+	C->gen_do = 0;
+	writeb(C, FORMAT_DEF_LABEL, skip_label); 
 	pushb(C, "jmp " FORMAT_LABEL "\n", C->cont_label);
 	pushb(C, FORMAT_DEF_LABEL, C->break_label);
 }
@@ -798,6 +822,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 				break;	
 			case NODE_WHILE:
 				generate_while(&C);
+				break;
+			case NODE_DO:
+				generate_do(&C);
 				break;
 			case NODE_FOR:
 				generate_for(&C);

@@ -37,6 +37,7 @@ static void parse_struct(ParseState*);
 static void parse_break(ParseState*);
 static void parse_continue(ParseState*);
 static void parse_return(ParseState*);
+static void parse_do_until(ParseState*);
 static VarDeclaration* parse_declaration(ParseState*);
 static ExpNode* parse_expression(ParseState*);
 static FunctionDescriptor* parse_function_descriptor(ParseState*);
@@ -318,6 +319,13 @@ on_op(ParseState* P, char op) {
 
 static void
 append_node(ParseState* P, TreeNode* node) {
+	/*
+	if (node->type == NODE_UNTIL && !P->expect_until) {
+		parse_die(P, "unexpected 'until' node");
+	} else if (P->expect_until && node->type != NODE_UNTIL) {
+		parse_die(P, "expected 'until' node");
+	}
+	*/
 	node->next = NULL;
 	node->prev = NULL;
 	TreeNode* append_to = NULL;
@@ -329,6 +337,10 @@ append_node(ParseState* P, TreeNode* node) {
 				break;
 			case NODE_WHILE:
 				target->whileval->child = node;
+				break;
+			case NODE_DO:
+				target->doval->child = node;
+				P->expect_until = 1;
 				break;
 			case NODE_FOR:
 				target->forval->child = node;
@@ -360,6 +372,7 @@ append_node(ParseState* P, TreeNode* node) {
 	if (node->type == NODE_IF
 		|| node->type == NODE_WHILE
 		|| node->type == NODE_FOR
+		|| node->type == NODE_DO
 		|| node->type == NODE_FUNC_IMPL) {
 		P->append_target = node;
 	} else {
@@ -509,6 +522,18 @@ print_tree(TreeNode* tree, int indent) {
 			INDENT(indent + 1);
 			printf("CHILD: [\n");
 			print_tree(tree->funcval->child, indent + 2);
+			INDENT(indent + 1);
+			printf("]\n");
+			INDENT(indent);
+			printf("]\n");
+			break;
+		case NODE_DO:
+			printf("DO/UNTIL: [\n");
+			INDENT(indent + 1);
+			printf("CONDITION: [\n");
+			print_expression(tree->doval->condition, indent + 2);
+			printf("CHILD: [\n");
+			print_tree(tree->doval->child, indent + 2);
 			INDENT(indent + 1);
 			printf("]\n");
 			INDENT(indent);
@@ -1706,10 +1731,9 @@ parse_block(ParseState* P) {
 
 static FunctionDescriptor*
 parse_function_descriptor(ParseState* P) {
-	/* expects to start on token ( */
-	/* function descriptor example:
-	 * (int, ^float) -> void
-	 */
+
+	/* thing: (a: int, b: int) -> float; */
+
 	FunctionDescriptor* fdesc = malloc(sizeof(FunctionDescriptor));
 	fdesc->arguments = NULL;
 	fdesc->return_type = NULL;
@@ -2033,6 +2057,19 @@ parse_if(ParseState* P) {
 }
 
 static void
+parse_do(ParseState* P) {
+	TreeNode* node = empty_node(P);
+	node->type = NODE_DO;
+	node->doval = malloc(sizeof(TreeDoUntil));
+	node->doval->child = NULL;
+	
+	safe_eat(P); /* skip DO */
+	
+	/* just append the node, the rest will be dealt with when children are read */	
+	append_node(P, node);
+}
+
+static void
 parse_else(ParseState* P) {
 
 }
@@ -2104,6 +2141,7 @@ generate_syntax_tree(TokenList* tokens) {
 	P->current_block = P->root_node;
 	P->append_target = NULL;
 	P->current_offset = 0;
+	P->expect_until = 0;
 
 	P->type_int = malloc(sizeof(Datatype));
 	P->type_int->type = DATA_INT;
@@ -2138,6 +2176,24 @@ generate_syntax_tree(TokenList* tokens) {
 	while (P->tokens && P->tokens->token) {
 		if (on_ident(P, "if")) {
 			parse_if(P);
+		} else if (on_ident(P, "do")) {
+			parse_do(P);
+		} else if (on_ident(P, "until")) {
+			TreeNode* last = P->current_block->blockval->child;
+			while (last->next) {
+				last = last->next;
+			}
+			if (last->type != NODE_DO) {
+				parse_die(P, "an 'until' node can only follow a 'do' node");
+			}
+			safe_eat(P); /* skip UNTIL */
+			eat_op(P, '(');
+			mark_operator(P, '(', ')');
+			last->doval->condition = parse_expression(P);
+			typecheck_expression(P, last->doval->condition);
+			fold_expression(P, last->doval->condition);
+			safe_eat(P);
+			eat_op(P, ';');
 		} else if (on_ident(P, "else")) {
 			parse_else(P);
 		} else if (on_ident(P, "while")) {

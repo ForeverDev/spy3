@@ -60,6 +60,7 @@ typedef struct TreeReturn TreeReturn;
 typedef struct TreeBlock TreeBlock;
 typedef struct TreeStatement TreeStatement;
 typedef struct TreeWhile TreeWhile;
+typedef struct TreeDoUntil TreeDoUntil;
 typedef struct TreeFunction TreeFunction;
 typedef struct TreeStruct TreeStruct;
 typedef struct TreeStructList TreeStructList;
@@ -103,7 +104,9 @@ enum TreeNodeType {
 	NODE_BREAK = 6,
 	NODE_CONTINUE = 7,
 	NODE_RETURN = 8,
-	NODE_BLOCK = 9
+	NODE_BLOCK = 9,
+	NODE_DO = 10,
+	NODE_UNTIL = 11
 };
 
 struct BinaryOp {
@@ -251,6 +254,11 @@ struct TreeWhile {
 	TreeNode* child;	
 };
 
+struct TreeDoUntil {
+	ExpNode* condition;
+	TreeNode* child;
+};
+
 struct TreeFor {
 	ExpNode* init;
 	ExpNode* condition;
@@ -294,6 +302,7 @@ struct TreeNode {
 		TreeWhile* whileval;
 		TreeStatement* stateval;
 		TreeFunction* funcval;
+		TreeDoUntil* doval;
 	};
 };
 
@@ -313,6 +322,7 @@ struct ParseState {
 	TreeStructList* defined_structs;
 	unsigned int current_offset;
 	int next_is_else;
+	int expect_until;
 };
 
 

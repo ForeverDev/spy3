@@ -339,13 +339,13 @@ do_function_pointer: () -> void {
 }
 
 main: () -> void {
-	
+
 	do_string();
 	do_primes();
 	do_pointers();
 	do_sorting();
 	do_function_pointer();
-
+	
 	print("\n\n");
 
 }
