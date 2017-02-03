@@ -130,7 +130,7 @@ strfind: (source: ^byte, target: ^byte) -> ^byte {
 		return 0;
 	}
 
-	for (index = 0; index < len_source; index += 1) {
+	for (index = 0; index < len_source - len_target + 1; index += 1) {
 		if (strneq(@source[index], target, len_target)) {
 			return @source[index];
 		}
@@ -324,6 +324,7 @@ do_function_pointer: () -> void {
 	/* get the index to use */
 	while (1) {
 		read_proper_int(@index);
+		print("INDEX IS %d\n", index);
 		if (index >= 1 && index <= 3) {
 			break;
 		}
@@ -332,7 +333,7 @@ do_function_pointer: () -> void {
 	pick = @desc[index - 1];
 	
 	/* execute via function pointer */
-	print("argument to that function? ");
+	print("argument to function '%s'? ", pick.name);
 	read_proper_int(@argument);
 	print("%s(%d) = %d\n", pick.name, argument, pick.ptr(argument));
 	
@@ -345,6 +346,8 @@ main: () -> void {
 	do_pointers();
 	do_sorting();
 	do_function_pointer();
+
+	i: int;
 	
 	print("\n\n");
 

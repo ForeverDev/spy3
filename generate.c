@@ -541,7 +541,12 @@ generate_expression(CompileState* C, ExpNode* exp) {
 					case '%':
 						writer(C, "mod");
 						break;
-					
+					case SPEC_LOG_AND:
+						writer(C, "land");
+						break;
+					case SPEC_LOG_OR:
+						writer(C, "lor");
+						break;
 					case '>':
 					case '<':
 					case SPEC_GE:
@@ -569,12 +574,7 @@ generate_expression(CompileState* C, ExpNode* exp) {
 							 * the top of the tree, a simple conditional jump can be generated */
 							writer(C, "j%s " FORMAT_LABEL, C->gen_do ? ins : inverted, C->bottom_label);
 						} else {
-							if (C->cond_jmp) {
-								writer(C, "p%s\n", C->gen_do ? ins : inverted);
-								writer(C, "%ctest", prefix); 
-							} else {
-								writer(C, "p%s", ins);
-							}
+							writer(C, "p%s", ins);
 						}
 						break;
 					}
@@ -613,7 +613,11 @@ generate_condition(CompileState* C, ExpNode* condition) {
 		C->cond_jmp = 0;
 		if (!IS_COMPARE(condition)) {
 			writeb(C, "%ctest\n", get_prefix(condition->eval));
-			writeb(C, "jz " FORMAT_LABEL "\n", C->bottom_label);
+			if (C->gen_do) {
+				writeb(C, "jnz " FORMAT_LABEL "\n", C->bottom_label);
+			} else {
+				writeb(C, "jz " FORMAT_LABEL "\n", C->bottom_label);
+			}
 		}
 	} else {
 		writeb(C, "iconst 0\n");
@@ -794,6 +798,7 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 	C.static_count = 0;
 	C.current_function = NULL;
 	C.string_list = NULL;
+	C.gen_do = 0;
 
 	if (!C.root_node) {
 		fclose(C.handle);

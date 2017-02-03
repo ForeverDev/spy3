@@ -2267,7 +2267,7 @@ generate_syntax_tree(TokenList* tokens) {
 				/* also append it as a var so that it can be referenced */
 				register_local(P, var);
 
-				append_node(P, node);
+
 			} else {
 				register_local(P, var);
 				eat_op(P, ';');
