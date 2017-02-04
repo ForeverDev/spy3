@@ -1229,8 +1229,11 @@ typecheck_expression(ParseState* P, ExpNode* exp) {
 					const Datatype* left = typecheck_expression(P, lhs);
 					const Datatype* right = typecheck_expression(P, rhs);
 					const Datatype* ret_type = left;
-					if (exp->bval->optype == ',') {
+					if (IS_BIN_OP(exp, ',')) {
 						return exp->eval = NULL;
+					}
+					if (IS_BIN_OP(exp, SPEC_LOG_AND) || IS_BIN_OP(exp, SPEC_LOG_OR)) {
+						return exp->eval = P->type_int;
 					}
 					int left_const = left->mods & MOD_CONST;
 					int is_assign = IS_ASSIGN(exp->bval);	
@@ -2266,6 +2269,8 @@ generate_syntax_tree(TokenList* tokens) {
 
 				/* also append it as a var so that it can be referenced */
 				register_local(P, var);
+
+				append_node(P, node);
 
 
 			} else {

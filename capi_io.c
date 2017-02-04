@@ -235,3 +235,4 @@ SpyCFunc capi_io[] = {
 	{"flush", io_flush},
 	{NULL, NULL}
 };
+

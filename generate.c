@@ -456,16 +456,63 @@ generate_expression(CompileState* C, ExpNode* exp) {
 				if (!dont_der) {
 					writer(C, "%cder\n", get_prefix_b(exp->eval));	
 				}
-			} else if (exp->bval->optype == '=') {
+			} else if (exp->bval->optype == SPEC_LOG_AND) {
+				/* short circuited! */
+				int ss0 = C->label_count++;
+				int ss1 = C->label_count++;
 				generate_expression(C, lhs);
-				generate_expression(C, rhs);
-				if (!is_top) {
-					writer(C, "dup\n");
+				if (IS_VOID(lhs->eval)) {
+					writer(C, "iconst 0\n");
 				}
-				writer(C, "%csave\n", get_prefix_b(lhs->eval)); 
+				writer(C, "dup\n");
+				writer(C, "itest\n");
+				writer(C, "jz " FORMAT_LABEL "\n", ss0);
+				generate_expression(C, rhs);
+				if (IS_VOID(rhs->eval)) {
+					writer(C, "iconst 0\n");
+				}
+				writer(C, "land\n");
+				writer(C, "jmp " FORMAT_LABEL "\n", ss1);
+				writer(C, FORMAT_DEF_LABEL, ss0);
+				writer(C, "pop\n");
+				writer(C, "iconst 0\n");
+				writer(C, FORMAT_LABEL ":", ss1);
+				writer(C, " ; bot log and\n");
+			} else if (exp->bval->optype == SPEC_LOG_OR) {
+				int ss0 = C->label_count++;
+				int ss1 = C->label_count++;
+				int ss2 = C->label_count++;
+				generate_expression(C, lhs);
+				if (IS_VOID(lhs->eval)) {
+					writer(C, "iconst 0\n");
+				}
+				writer(C, "itest\n");
+				writer(C, "jnz " FORMAT_LABEL "\n", ss0);
+				generate_expression(C, rhs);
+				if (IS_VOID(rhs->eval)) {
+					writer(C, "iconst 0\n");
+				}
+				writer(C, "itest\n");
+				writer(C, "jnz " FORMAT_LABEL "\n", ss0);
+				writer(C, "jmp " FORMAT_LABEL "\n", ss1);
+				writer(C, FORMAT_DEF_LABEL, ss0);
+				writer(C, "iconst 1\n");
+				writer(C, "jmp " FORMAT_LABEL "\n", ss2);
+				writer(C, FORMAT_DEF_LABEL, ss1);
+				writer(C, "iconst 0\n");
+				writer(C, FORMAT_LABEL ":", ss2);
+				writer(C, " ; bot log or\n");
+			} else if (exp->bval->optype == '=') {
+				char p = get_prefix_b(lhs->eval);
+				generate_expression(C, lhs);
+				writer(C, "dup\n");
+				generate_expression(C, rhs);
+				writer(C, "%csave\n", p); 
+				writer(C, "%cder\n", p);
 			} else if (IS_ASSIGN(exp->bval)) {
 				char lp = get_prefix_b(lhs->eval);
 				generate_expression(C, lhs);
+				writer(C, "dup\n");
 				writer(C, "dup\n");
 				writer(C, "%cder\n", lp);
 				generate_expression(C, rhs);
@@ -502,10 +549,8 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						break;
 
 				}
-				if (!is_top) {
-					writer(C, "dup\n");
-				}
 				writer(C, "%csave\n", lp);
+				writer(C, "%cder\n", lp);
 			} else { 
 				generate_expression(C, lhs);
 				generate_expression(C, rhs);
@@ -540,12 +585,6 @@ generate_expression(CompileState* C, ExpNode* exp) {
 						break;
 					case '%':
 						writer(C, "mod");
-						break;
-					case SPEC_LOG_AND:
-						writer(C, "land");
-						break;
-					case SPEC_LOG_OR:
-						writer(C, "lor");
 						break;
 					case '>':
 					case '<':
@@ -840,11 +879,9 @@ generate_instructions(ParseState* P, const char* outfile_name) {
 			case NODE_STATEMENT: {
 				ExpNode* exp = C.focus->stateval->exp;
 				generate_expression(&C, exp);
-				/*
-				if (exp->eval->type != DATA_VOID && !(exp->type == EXP_BINARY && IS_ASSIGN(exp->bval))) {
+				if (!IS_VOID(exp->eval)) {
 					writeb(&C, "pop\n");
 				}
-				*/
 				break;
 			}
 			case NODE_BREAK:

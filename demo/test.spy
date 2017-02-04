@@ -13,15 +13,17 @@ struct NameContainer {
 };
 
 struct FunctionDescriptor {
-	name:  ^byte;
-	ptr:   (arg: int) -> int;
+	name:    ^byte;
+	arg_min: int;
+	arg_max: int;
+	ptr:     (arg: int) -> int;
 };
 
 factorial: (n: int) -> int {
 	if (n <= 1)
 		return 1;
 	return n * factorial(n - 1);	
-};
+}
 
 fibonacci: (n: int) -> int {
 	if (n <= 2)
@@ -308,12 +310,18 @@ do_function_pointer: () -> void {
 
 	desc[0].ptr = factorial;
 	desc[0].name = "factorial";
+	desc[0].arg_min = 1;
+	desc[0].arg_max = 20;
 
 	desc[1].ptr = fibonacci;
 	desc[1].name = "fibonacci";
+	desc[1].arg_min = 1;
+	desc[1].arg_max = 1000;
 
 	desc[2].ptr = square;
 	desc[2].name = "square";
+	desc[2].arg_min = 0;
+	desc[2].arg_max = 10000;
 	
 	/* present user with choices... */
 	print("which function would you like to execute?\n");
@@ -334,7 +342,13 @@ do_function_pointer: () -> void {
 	
 	/* execute via function pointer */
 	print("argument to function '%s'? ", pick.name);
-	read_proper_int(@argument);
+	while (1) {
+		read_proper_int(@argument);
+		if (argument >= pick.arg_min && argument <= pick.arg_max) {
+			break;
+		}
+		print("invalid argument, must be in range [%d, %d]\n", pick.arg_min, pick.arg_max);
+	}
 	print("%s(%d) = %d\n", pick.name, argument, pick.ptr(argument));
 	
 }
@@ -347,8 +361,6 @@ main: () -> void {
 	do_sorting();
 	do_function_pointer();
 
-	i: int;
-	
 	print("\n\n");
 
 }

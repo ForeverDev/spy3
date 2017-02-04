@@ -92,13 +92,24 @@ std_delete(SpyState* spy) {
 			return 0;
 		}
 	}
-	spy_die("attempt to free an invalid pointer");
+	spy_die("attempt to free an invalid pointer (addr=0x%llX)", addr);
 	return 0;	
+}
+
+static spy_int
+std_assert(SpyState* spy) {
+	spy_int cond = spy_pop_int(spy);
+	spy_string err = spy_gets(spy, spy_pop_int(spy));
+	if (!cond) {
+		spy_die(err);
+	}
+	return 0;
 }
 
 SpyCFunc capi_std[] = {
 	{"quit", std_quit},
 	{"alloc", std_alloc},
 	{"delete", std_delete},
+	{"assert", std_assert},
 	{NULL, NULL}
 };
