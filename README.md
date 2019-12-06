@@ -1,6 +1,7 @@
 Welcome to the Spyre programming language.  Throughout highschool I oddly became deeply
 interested in everything low level - programming languages, virtual machines, compilers,
 assemblers, you name it.  So, I ended up trying to write my own little language in C.
+Here's what I came up with.
 
 ## This repo includes:
 1. A Spyre virtual machine.  The entire VM is stack based (I took a lot of
