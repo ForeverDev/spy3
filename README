@@ -33,9 +33,11 @@ Map of what actually happens:
     SPYRE BYTECODE (.spyb) -> SPYRE VIRTUAL MACHINE -> your program is run!
 
 WANT TO TRY IT OUT?
-    >git clone https://github.com/ForeverDev/spy3.git
-    >cd spy3
-    >make
-    >spy demo/test
+```
+git clone https://github.com/ForeverDev/spy3.git
+cd spy3
+make
+spy demo/test
+```
 
 David Wilson
