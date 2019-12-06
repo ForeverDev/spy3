@@ -35,9 +35,9 @@ when I wrote this.)
   pointers, arrays, structs, etc.
 
 ### Map of what actually happens:
-- SPYRE CODE (.spy) -> SPYRE COMPILER -> SPYRE ASSEMBLY CODE (.spys)
-- SPYRE ASSEMBLY CODE (.spys) -> SPYRE ASSEMBLER -> SPYRE BYTECODE (.spyb)
-- SPYRE BYTECODE (.spyb) -> SPYRE VIRTUAL MACHINE -> your program is run!
+- SPYRE CODE (.spy) => `lex.c` => `parse.c` => `generate.c` => SPYRE ASSEMBLY CODE (.spys)
+- SPYRE ASSEMBLY CODE (.spys) => `asmlex.c` => `assemble.c` => SPYRE BYTECODE (.spyb)
+- SPYRE BYTECODE (.spyb) => `vm.c` => your program is run!
 
 ## WANT TO TRY IT OUT?
 ```
