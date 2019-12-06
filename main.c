@@ -32,6 +32,10 @@ int main(int argc, char** argv) {
 	fbin = malloc(slen + 6);
 	strcpy(fbin, fname);
 	strcat(fbin, ".spyb");
+
+    free(fasm);
+    free(fspy);
+    free(fbin);
 	
 	TokenList* tokens = generate_tokens_from_source(fspy);
 	ParseState* state = generate_syntax_tree(tokens);
