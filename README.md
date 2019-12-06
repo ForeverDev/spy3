@@ -12,8 +12,8 @@ This repo includes:
    extension.
 3. A full blown Spyre compiler.  Unfortunately, I didn't do a great job of
    actually writing a Spyre SPECIFICATION, so it's not very clear how to
-   actually WRITE Spyre code.  However, if you take a look at demo/test.spy,
-   you'll see some example programs and syntax.
+   actually WRITE Spyre code.  However, if you take a look at demo/bigtest.spy
+   or demo/mandelbrot.spy, you'll see some example programs and syntax.
 4. A C-API.  Users can write their own C functions and use the Spyre-C 
    library to call these functions with Spyre syntax.
 
@@ -37,7 +37,7 @@ WANT TO TRY IT OUT?
 git clone https://github.com/ForeverDev/spy3.git
 cd spy3
 make
-spy demo/test
+spy demo/bigtest
 spy demo/mandelbrot
 ```
 
