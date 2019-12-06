@@ -23,6 +23,9 @@ Some interesting points:
       So, compiling 'test.spy' will output 'test.spys' and 'test.spyb'.  The
       'test.spys' file has some comments made by the compiler to help you understand
       what is actually going on.
+    - The compiler is pretty cool!  It's got full blown typechecking, the ability
+      to allocate and free memory, recursive functions, for loops, while loops,
+      pointers, arrays, structs, etc.
 
 Map of what actually happens:
     SPYRE CODE (.spy) -> SPYRE COMPILER -> SPYRE ASSEMBLY CODE (.spys)
@@ -30,9 +33,9 @@ Map of what actually happens:
     SPYRE BYTECODE (.spyb) -> SPYRE VIRTUAL MACHINE -> your program is run!
 
 WANT TO TRY IT OUT?
-    `git clone https://github.com/ForeverDev/spy3.git`
-    `cd spy3`
-    `make`
-    `spy demo/test`
+    >git clone https://github.com/ForeverDev/spy3.git
+    >cd spy3
+    >make
+    >spy demo/test
 
 David Wilson
