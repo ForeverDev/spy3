@@ -3,6 +3,12 @@ interested in everything low level - programming languages, virtual machines, co
 assemblers, you name it.  So, I ended up trying to write my own little language in C.
 Here's what I came up with.
 
+## DISCLAIMER
+This language is far from perfect.  It's really just meant to be a fun
+little thought expirement gone wild.  As I wrote this code, I was still
+learning tons about languages, compilers, and even C itself (I was 16
+when I wrote this.)
+
 ## This repo includes:
 1. A Spyre virtual machine.  The entire VM is stack based (I took a lot of
    inspiration from the JVM instruction set). See vm.c for the instruction
