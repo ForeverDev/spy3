@@ -1,6 +1,4 @@
-/* c function declarations */
-print: cfunc (format: ^byte, ...) -> void;
-quit: cfunc () -> void;
+print: foreign (format: ^byte, ...) -> void;
 
 /* maps number n from range [a, b] to range [c, d] */
 map: (n: float, a: float, b: float, c: float, d: float) -> float {
