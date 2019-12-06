@@ -6,8 +6,8 @@ Here's what I came up with.
 ## DISCLAIMER
 This language is far from perfect.  It's really just meant to be a fun
 little thought expirement gone wild.  As I wrote this code, I was still
-learning tons about languages, compilers, and even C itself (I was 16 at
-the time, cut me a little slack!)
+learning tons about languages, compilers, and even C itself (I was 16
+when I wrote this.)
 
 ## This repo includes:
 1. A Spyre virtual machine.  The entire VM is stack based (I took a lot of
@@ -35,11 +35,11 @@ the time, cut me a little slack!)
   pointers, arrays, structs, etc.
 
 Map of what actually happens:
-SPYRE CODE (.spy) -> SPYRE COMPILER -> SPYRE ASSEMBLY CODE (.spys)
-SPYRE ASSEMBLY CODE (.spys) -> SPYRE ASSEMBLER -> SPYRE BYTECODE (.spyb)
-SPYRE BYTECODE (.spyb) -> SPYRE VIRTUAL MACHINE -> your program is run!
+- SPYRE CODE (.spy) -> SPYRE COMPILER -> SPYRE ASSEMBLY CODE (.spys)
+- SPYRE ASSEMBLY CODE (.spys) -> SPYRE ASSEMBLER -> SPYRE BYTECODE (.spyb)
+- SPYRE BYTECODE (.spyb) -> SPYRE VIRTUAL MACHINE -> your program is run!
 
-## WANT TO TRY IT OUT?
+# WANT TO TRY IT OUT?
 ```
 git clone https://github.com/ForeverDev/spy3.git
 cd spy3
