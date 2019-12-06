@@ -2,7 +2,7 @@ Welcome to the Spyre programming language.  Throughout highschool I oddly became
 interested in everything low level - programming languages, virtual machines, compilers,
 assemblers, you name it.  So, I ended up trying to write my own little language in C.
 
-This repo includes:
+## This repo includes:
 1. A Spyre virtual machine.  The entire VM is stack based (I took a lot of
    inspiration from the JVM instruction set). See vm.c for the instruction
    set (looks like I didn't document it very well at all... whoops)
@@ -17,7 +17,7 @@ This repo includes:
 4. A C-API.  Users can write their own C functions and use the Spyre-C 
    library to call these functions with Spyre syntax.
 
-Some interesting points:
+## Some interesting points:
 - When you compile a .spy file, it will produce a Spyre binary output (.spyb).
   However, it will also spit out an assembly representation of the binary file.
   So, compiling 'test.spy' will output 'test.spys' and 'test.spyb'.  The
@@ -32,7 +32,7 @@ SPYRE CODE (.spy) -> SPYRE COMPILER -> SPYRE ASSEMBLY CODE (.spys)
 SPYRE ASSEMBLY CODE (.spys) -> SPYRE ASSEMBLER -> SPYRE BYTECODE (.spyb)
 SPYRE BYTECODE (.spyb) -> SPYRE VIRTUAL MACHINE -> your program is run!
 
-WANT TO TRY IT OUT?
+## WANT TO TRY IT OUT?
 ```
 git clone https://github.com/ForeverDev/spy3.git
 cd spy3
