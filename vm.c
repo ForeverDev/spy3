@@ -8,7 +8,6 @@
 
 static SpyState* spy = NULL;
 
-/* TODO all float instructions */
 const SpyInstruction spy_instructions[255] = {
 	{"NOP", 0x00, {OP_NONE}},				/* [] -> [] */
 	{"iconst", 0x01, {OP_INT64}},			/* [] -> [int val] */

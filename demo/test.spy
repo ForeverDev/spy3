@@ -1,4 +1,7 @@
-/* cfunc declarations.... TODO put these in an include */
+/* DAVID WILSON - SPYRE TESTING PROGRAM #1 :) */
+/* probably very unstable ... edit with caution!!! */
+
+/* external C function declarations.... TODO put these in an include */
 print:       foreign (format: ^byte, ...) -> void;
 alloc:       foreign (bytes: int) -> ^byte;
 delete:      foreign (ptr: ^byte) -> void;
@@ -7,6 +10,7 @@ read_int:    foreign (ptr: ^int) -> int;
 read_float:  foreign (ptr: ^float) -> int;
 read_string: foreign (ptr: ^byte, size: int) -> ^byte;
 
+/* here's what structs look like.  No need to typedef :) */
 struct NameContainer {
 	first: ^byte;
 	last:  ^byte;
@@ -60,6 +64,7 @@ read_proper_int: (target: ^int) -> void {
 	}
 }
 
+/* allocates [bytes] bytes, quits if OOM */
 safe_alloc: (bytes: int) -> ^byte {
 	chunk: ^byte;
 
