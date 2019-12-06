@@ -7,7 +7,7 @@ Here's what I came up with.
 This language is far from perfect.  It's really just meant to be a fun
 little thought expirement gone wild.  As I wrote this code, I was still
 learning tons about languages, compilers, and even C itself (I was 16
-when I wrote this.)
+when I wrote this - cut me a little slack...)
 
 ### This repo includes:
 1. A Spyre virtual machine.  The entire VM is stack based (I took a lot of
