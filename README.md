@@ -38,6 +38,7 @@ git clone https://github.com/ForeverDev/spy3.git
 cd spy3
 make
 spy demo/test
+spy demo/mandelbrot
 ```
 
 David Wilson
